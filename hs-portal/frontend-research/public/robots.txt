@@ -1,0 +1,27 @@
+# 기록해는 로그인해야 쓰는 서비스라 대부분의 화면은 검색에 올릴 것이 없다.
+# 소개가 되는 첫 화면과 환불 규정만 열어둔다.
+User-agent: *
+Allow: /$
+Allow: /refund
+Disallow: /login
+Disallow: /signup
+Disallow: /account
+Disallow: /journals
+Disallow: /cover-letters
+Disallow: /subscribe
+Disallow: /payment
+Disallow: /teacher
+Disallow: /admin
+Disallow: /api/
+
+# 학생이 만든 공유 링크. 개인 기록이므로 절대 색인되면 안 된다.
+Disallow: /journal-share/
+
+# 네이버 검색로봇(Yeti)도 명시적으로 허용
+User-agent: Yeti
+Allow: /$
+Allow: /refund
+Disallow: /journal-share/
+Disallow: /api/
+
+Sitemap: https://diary.ggm.kr/sitemap.xml

@@ -1,0 +1,65 @@
+[project]
+name = "audiobook-ai-agent"
+version = "0.1.0"
+description = "LiveKit agent worker for Talk mode (Phase 5: echo agent for latency measurement)"
+requires-python = ">=3.13"
+dependencies = [
+    # Shared domain package (packages/story-core), installed from the repository.
+    "story-core",
+    # The job re-authorises its session from PostgreSQL; the driver is the service's to choose (as in api/worker).
+    "asyncpg==0.31.0",
+    "livekit-agents==1.8.2",
+    "pydantic==2.13.5",
+    "pydantic-settings==2.15.0",
+    "sentry-sdk==2.69.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "ruff==0.15.4",
+    "mypy==2.3.1",
+]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["agent*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+asyncio_default_test_loop_scope = "function"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "C4", "SIM", "RUF", "ASYNC", "S", "PTH", "T20"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106"]
+# Measurement tools report to the terminal; that is their output.
+"scripts/*" = ["T201"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+mypy_path = "../../packages/story-core"
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+# The agents framework ships partial type information; its internals are not our contract.
+module = ["livekit.agents", "livekit.agents.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# boto3 ships without type information; stubs lag releases (same override as story-core).
+module = ["boto3", "boto3.*", "botocore", "botocore.*"]
+ignore_missing_imports = true

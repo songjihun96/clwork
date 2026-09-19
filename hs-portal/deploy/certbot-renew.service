@@ -1,0 +1,25 @@
+# /etc/systemd/system/certbot-renew.service
+#
+# Let's Encrypt 인증서 자동 갱신.
+#
+# 왜 따로 두는가 — 2026-09-06 에 apt 로 깐 certbot 이 pyOpenSSL 버전 충돌로
+# 아예 실행되지 않는 것을 발견했다(module 'lib' has no attribute 'GEN_EMAIL').
+# 그 상태로 두면 90일 뒤 udjcs·diary·udtschool·univ 네 사이트가 한꺼번에
+# 인증서 만료로 접속 불가가 된다. 시스템 파이썬 패키지를 건드리면 다른 것이
+# 깨질 수 있어, certbot 만 /opt/certbot 가상환경에 격리해 설치하고 갱신도
+# 여기서 돌린다.
+#
+# 설치
+#   sudo apt-get install -y python3-venv
+#   sudo python3 -m venv /opt/certbot
+#   sudo /opt/certbot/bin/pip install --upgrade pip certbot certbot-nginx
+#   sudo ln -sf /opt/certbot/bin/certbot /usr/bin/certbot
+[Unit]
+Description=Let's Encrypt 인증서 갱신
+After=network.target
+
+[Service]
+Type=oneshot
+# --deploy-hook 은 실제로 갱신된 날에만 돈다. 갱신이 없는 날 nginx 를
+# 괜히 흔들지 않기 위해서다.
+ExecStart=/opt/certbot/bin/certbot renew --quiet --deploy-hook "systemctl reload nginx"

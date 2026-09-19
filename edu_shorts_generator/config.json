@@ -1,0 +1,44 @@
+{
+  "shorts_count_default": 5,
+  "max_length_default": 60,
+  "min_shorts_score": 70,
+  "weights": {
+    "learning_value": 0.25,
+    "concept_importance": 0.2,
+    "standalone_understanding": 0.15,
+    "completeness": 0.15,
+    "explanation_quality": 0.1,
+    "example_problem_value": 0.05,
+    "exam_practical_relevance": 0.05,
+    "clarity": 0.05
+  },
+  "penalties": {
+    "redundancy_penalty_max": 15.0,
+    "context_dependency_penalty_max": 15.0,
+    "low_educational_value_penalty_max": 50.0
+  },
+  "type_guidance": {
+    "수학": "문제 풀이 과정, 공식이 성립하는 원리, 사고 과정(왜 그렇게 푸는지)의 비중을 높게 평가하라. 단순 정답 제시보다 풀이 논리를 우선하라.",
+    "과학": "핵심 개념, 원리, 실험 과정, 인과관계 설명의 비중을 높게 평가하라.",
+    "역사": "핵심 사건, 원인과 결과, 시대적 맥락, 비교·인과관계 설명의 비중을 높게 평가하라.",
+    "국어": "글의 핵심 주제, 문학적/언어적 개념, 예시를 통한 이해도의 비중을 높게 평가하라.",
+    "영어": "핵심 문법/어휘 개념, 예문을 통한 설명, 실전 활용 가능성의 비중을 높게 평가하라.",
+    "사회": "핵심 개념, 사회적 맥락, 사례 비교, 인과관계의 비중을 높게 평가하라.",
+    "코딩": "핵심 개념, 코드 동작 원리, 실습 예시, 자주 하는 실수의 비중을 높게 평가하라.",
+    "직업교육": "실제 업무에서 바로 활용할 수 있는 지식, 절차, 실무 팁의 비중을 높게 평가하라.",
+    "자격증": "시험에 자주 나오는 핵심 개념, 암기 포인트, 실수하기 쉬운 부분의 비중을 높게 평가하라.",
+    "실험": "실험 목적, 과정, 결과 해석의 비중을 높게 평가하라.",
+    "실습": "실습 절차, 핵심 포인트, 흔한 실수의 비중을 높게 평가하라.",
+    "진로/직업 교육": "실제 진로 선택에 도움이 되는 구체적 정보와 조언의 비중을 높게 평가하라.",
+    "기타": "핵심 개념과 학습 가치를 중심으로 균형 있게 평가하라."
+  },
+  "whisper_model": "medium",
+  "whisper_language": null,
+  "chunk_minutes": 15,
+  "chunk_overlap_seconds": 60,
+  "claude_model": "claude-sonnet-5",
+  "claude_max_output_tokens": 8000,
+  "vertical_style": "blur_pad",
+  "subtitle_enabled_default": true,
+  "output_dir": "output"
+}

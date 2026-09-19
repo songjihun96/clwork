@@ -1,0 +1,23 @@
+{
+  "name": "interactive-audiobook",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "gen:api": "node scripts/gen-api.mjs",
+    "lint": "npm --workspaces --if-present run lint",
+    "mobile": "npm --workspace @audiobook/mobile run start",
+    "test:mobile": "npm --workspace @audiobook/mobile run test",
+    "typecheck": "npm --workspaces --if-present run typecheck"
+  },
+  "devDependencies": {
+    "openapi-typescript": "7.13.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,0 +1,44 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# node
+node_modules/
+.expo/
+dist/
+web-build/
+*.tsbuildinfo
+
+# expo prebuild output (generated from app.json — see docs/mobile-architecture.md)
+apps/mobile/ios/
+apps/mobile/android/
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.db
+
+# local storage (dev)
+var/
+
+# generated
+services/api/openapi.json
+
+# os / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# native signing material
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision

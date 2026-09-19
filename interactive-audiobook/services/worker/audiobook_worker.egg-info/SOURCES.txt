@@ -1,0 +1,10 @@
+pyproject.toml
+audiobook_worker.egg-info/PKG-INFO
+audiobook_worker.egg-info/SOURCES.txt
+audiobook_worker.egg-info/dependency_links.txt
+audiobook_worker.egg-info/requires.txt
+audiobook_worker.egg-info/top_level.txt
+tests/test_tasks.py
+worker/__init__.py
+worker/main.py
+worker/tasks.py

@@ -1,0 +1,24 @@
+# 우리동네 직업계고 (ㅇㅈ)
+
+> 전국 직업계고(특성화고·마이스터고)를 지역과 계열로 검색하고, 입시 일정·학교 설명회·학교 소개·진로 적성 검사를 한 곳에서 제공하는 정보 포털입니다. 특성화고신문이 운영합니다.
+
+학교 정보는 나이스(NEIS) 교육정보 개방 포털 등 공개 자료를 바탕으로 하며, 각 학교가 직접 소개·학과·시설 정보를 보완합니다. 지도는 OpenStreetMap, 기사는 특성화고신문이 제공합니다.
+
+## 주요 페이지
+
+- [홈](https://udjschool.ggm.kr/): 인기 학교 랭킹, 계열별 바로가기, 직업계고 소식
+- [학교 검색](https://udjschool.ggm.kr/search): 지역·시군구·계열·남녀공학으로 검색하고 지도로 확인
+- [학교 일정](https://udjschool.ggm.kr/events): 전국 직업계고의 입시 일정과 학교 설명회를 모아보기
+- [진로 적성 테스트](https://udjschool.ggm.kr/quiz): 문항에 답하면 맞는 계열·학과와 통학 가능한 학교를 추천
+
+## 안내
+
+- [이용약관](https://udjschool.ggm.kr/terms)
+- [개인정보처리방침](https://udjschool.ggm.kr/privacy)
+- [환불 규정](https://udjschool.ggm.kr/refund): 학교 대상 유료 노출 플랜의 청약철회·환불 기준
+
+## 참고
+
+- 학교 상세 페이지는 `https://udjschool.ggm.kr/schools/{학교ID}` 형식입니다. 전체 목록은 [사이트맵](https://udjschool.ggm.kr/sitemap.xml)에 있습니다.
+- 로그인이 필요한 영역(학생 일지, 선생님·학교 관리 화면)은 개인 기록이 포함되어 있어 수집 대상이 아닙니다. [robots.txt](https://udjschool.ggm.kr/robots.txt)에서 차단해 두었습니다.
+- 운영: 특성화고신문 (사업자등록번호 214-13-75982) · news@sinmoon.net

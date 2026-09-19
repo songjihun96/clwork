@@ -1,0 +1,85 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend-journal",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "cd /d C:\\Users\\USER\\Desktop\\클로드작업\\hs-portal\\frontend-journal && npm run dev"
+      ],
+      "port": 5174
+    },
+    {
+      "name": "udj-frontend",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "cd /d C:\\Users\\USER\\Desktop\\클로드작업\\hs-portal\\frontend && npm run dev"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "udj-backend",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "cd /d C:\\Users\\USER\\Desktop\\클로드작업\\hs-portal\\backend && .venv\\Scripts\\python.exe -m uvicorn app.main:app --reload --port 8000"
+      ],
+      "port": 8000
+    },
+    {
+      "name": "diary-backend",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "cd /d C:\\Users\\USER\\Desktop\\클로드작업\\hs-portal\\diary-backend && .venv\\Scripts\\python.exe -m uvicorn app.main:app --reload --port 8100"
+      ],
+      "port": 8100
+    },
+    {
+      "name": "cs-demo-backend",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "cd /d C:\\Users\\USER\\Desktop\\클로드작업\\hs-portal\\backend && .venv\\Scripts\\python.exe -m app.cc_demo"
+      ],
+      "port": 8000
+    },
+    {
+      "name": "cs-frontend",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "cd /d C:\\Users\\USER\\Desktop\\클로드작업\\hs-portal\\frontend-cs && npm run dev"
+      ],
+      "port": 5175
+    },
+    {
+      "name": "research-backend",
+      "runtimeExecutable": "hs-portal/diary-backend/.venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "app.main:app",
+        "--reload",
+        "--port",
+        "8200",
+        "--app-dir",
+        "hs-portal/research-backend"
+      ],
+      "port": 8200
+    },
+    {
+      "name": "research-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "hs-portal/frontend-research",
+        "run",
+        "dev"
+      ],
+      "port": 5176
+    }
+  ]
+}

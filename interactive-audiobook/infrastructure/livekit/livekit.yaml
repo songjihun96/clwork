@@ -1,0 +1,23 @@
+# LiveKit server for local Talk-mode development only.
+# The key pair below is the well-known development pair; the API refuses it when ENV=production.
+# Production uses LiveKit Cloud or a properly configured self-hosted cluster with TURN and real keys.
+port: 7880
+bind_addresses:
+  - ""
+rtc:
+  tcp_port: 7881
+  # A small published UDP range keeps docker-compose port mapping practical on Windows.
+  port_range_start: 50100
+  port_range_end: 50120
+  # Everything runs on the loopback interface, so there is nothing to discover.
+  use_external_ip: false
+keys:
+  devkey: secretsecretsecretsecretsecretsecretsecret
+logging:
+  level: info
+  json: false
+room:
+  # Matches the API's RoomConfiguration defaults; the token can only lower these.
+  empty_timeout: 60
+  max_participants: 4
+  auto_create: true

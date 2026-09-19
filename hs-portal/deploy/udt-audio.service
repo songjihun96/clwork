@@ -1,0 +1,33 @@
+# /etc/systemd/system/udt-audio.service
+#
+# 통화 음성을 전화망과 상담원 브라우저 사이에서 중계하는 서비스.
+# SIP 트렁크 부가서비스 없이 PC 로 전화를 받기 위한 것이다(stream 모드).
+#
+# **워커가 반드시 하나여야 한다.**
+# 전화망 쪽 WebSocket 과 상담원 브라우저 쪽 WebSocket 이 같은 프로세스에
+# 있어야 소리를 이어붙일 수 있다. 워커를 늘리면 서로 다른 프로세스에 붙어
+# 통화가 무음이 된다. 성능 때문에 늘리고 싶어지더라도 늘리면 안 된다.
+# 동시 통화가 늘어 한계에 부딪히면 워커가 아니라 서버를 나눠야 한다.
+#
+# 본 백엔드(udt-backend, 8000)와 같은 코드·같은 DB 를 쓴다. nginx 가
+# 음성 관련 두 경로만 이쪽(8010)으로 보낸다.
+[Unit]
+Description=UDJ CS 통화 음성 중계 (stream 모드)
+After=network.target udt-backend.service
+
+[Service]
+User=root
+Group=root
+WorkingDirectory=/root/hs-portal/backend
+EnvironmentFile=/root/hs-portal/backend/.env
+ExecStart=/root/hs-portal/backend/.venv/bin/uvicorn app.main:app \
+    --host 127.0.0.1 \
+    --port 8010 \
+    --workers 1
+# 음성은 짧은 메시지가 초당 50번씩 오간다. 파일 핸들을 넉넉히 준다.
+LimitNOFILE=65535
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

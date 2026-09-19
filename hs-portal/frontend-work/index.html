@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>우리 업무</title>
+<link rel="stylesheet" href="/app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%234f46c9'/><path d='M9 16.5l4.5 4.5L23 11' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+</head>
+<body>
+
+<!-- 로그인 ─────────────────────────────────────────────────────────────── -->
+<section id="loginView" class="login-wrap" hidden>
+  <form id="loginForm" class="login-card">
+    <div class="logo">우리<b>업무</b></div>
+    <p class="sub">아이디와 비밀번호를 넣어 주세요.</p>
+    <label>아이디
+      <input name="login_id" autocomplete="username" required autofocus>
+    </label>
+    <label>비밀번호
+      <input name="password" type="password" autocomplete="current-password" required>
+    </label>
+    <p id="loginMsg" class="err" hidden></p>
+    <button class="primary wide" type="submit">로그인</button>
+    <p class="hint">계정은 관리자가 만들어 드립니다.</p>
+  </form>
+</section>
+
+<!-- 앱 ─────────────────────────────────────────────────────────────────── -->
+<div id="appView" hidden>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo sm">우리<b>업무</b></span>
+      <nav id="nav" class="nav"></nav>
+    </div>
+    <div class="topbar-right">
+      <span id="who" class="who"></span>
+      <button id="pwBtn" class="ghost" type="button">비밀번호</button>
+      <button id="outBtn" class="ghost" type="button">로그아웃</button>
+    </div>
+  </header>
+
+  <div id="notice" class="notice" hidden></div>
+  <main id="page" class="wrap"></main>
+</div>
+
+<!-- 업무 만들기/고치기 ──────────────────────────────────────────────────── -->
+<dialog id="taskDlg">
+  <form id="taskForm" method="dialog">
+    <h2 id="taskDlgTitle">업무 배분</h2>
+    <input type="hidden" name="id">
+    <label>담당자
+      <select name="assignee_id" required></select>
+    </label>
+    <label>할 일
+      <input name="title" maxlength="160" required placeholder="무엇을 해야 하나요">
+    </label>
+    <label>자세히
+      <textarea name="body" rows="4" placeholder="배경, 참고할 것, 판단 기준"></textarea>
+    </label>
+    <div class="row">
+      <label>중요도
+        <select name="priority">
+          <option value="0">보통</option>
+          <option value="1">중요</option>
+          <option value="2">급함</option>
+        </select>
+      </label>
+      <label>기한
+        <input name="due_at" type="datetime-local">
+      </label>
+    </div>
+    <p id="taskMsg" class="err" hidden></p>
+    <menu>
+      <button value="cancel" class="ghost" type="submit" formnovalidate>취소</button>
+      <button value="save" class="primary" type="submit">저장</button>
+    </menu>
+  </form>
+</dialog>
+
+<!-- 요청 등록 ──────────────────────────────────────────────────────────── -->
+<dialog id="reqDlg">
+  <form id="reqForm" method="dialog">
+    <h2>요청사항 등록</h2>
+    <label>제목
+      <input name="title" maxlength="160" required placeholder="무엇을 요청하시나요">
+    </label>
+    <label>내용
+      <textarea name="body" rows="5" placeholder="필요한 것, 기한, 참고 자료"></textarea>
+    </label>
+    <label>중요도
+      <select name="priority">
+        <option value="0">보통</option>
+        <option value="1">중요</option>
+        <option value="2">급함</option>
+      </select>
+    </label>
+    <p id="reqMsg" class="err" hidden></p>
+    <menu>
+      <button value="cancel" class="ghost" type="submit" formnovalidate>취소</button>
+      <button value="save" class="primary" type="submit">등록</button>
+    </menu>
+  </form>
+</dialog>
+
+<!-- 계정 만들기 ────────────────────────────────────────────────────────── -->
+<dialog id="userDlg">
+  <form id="userForm" method="dialog">
+    <h2>계정 만들기</h2>
+    <div class="row">
+      <label>권한
+        <select name="role">
+          <option value="staff">직원</option>
+          <option value="partner">협업기업</option>
+          <option value="admin">관리자</option>
+        </select>
+      </label>
+      <label id="orgWrap" hidden>소속 기업
+        <select name="org_id"></select>
+      </label>
+    </div>
+    <div class="row">
+      <label>아이디
+        <input name="login_id" required placeholder="영문·숫자 3~40자">
+      </label>
+      <label>이름
+        <input name="name" required placeholder="홍길동">
+      </label>
+    </div>
+    <div class="row">
+      <label>연락처 <input name="phone" placeholder="선택"></label>
+      <label>메모 <input name="memo" placeholder="부서·직책 등 선택"></label>
+    </div>
+    <p id="userMsg" class="err" hidden></p>
+    <menu>
+      <button value="cancel" class="ghost" type="submit" formnovalidate>취소</button>
+      <button value="save" class="primary" type="submit">만들기</button>
+    </menu>
+  </form>
+</dialog>
+
+<!-- 비밀번호 바꾸기 ────────────────────────────────────────────────────── -->
+<dialog id="pwDlg">
+  <form id="pwForm" method="dialog">
+    <h2>비밀번호 바꾸기</h2>
+    <label id="curWrap">현재 비밀번호
+      <input name="current_password" type="password" autocomplete="current-password">
+    </label>
+    <label>새 비밀번호
+      <input name="new_password" type="password" minlength="8" required
+             autocomplete="new-password" placeholder="8자 이상">
+    </label>
+    <p id="pwMsg" class="err" hidden></p>
+    <menu>
+      <button value="cancel" class="ghost" type="submit" formnovalidate>취소</button>
+      <button value="save" class="primary" type="submit">바꾸기</button>
+    </menu>
+  </form>
+</dialog>
+
+<!-- 임시 비밀번호 안내 ─────────────────────────────────────────────────── -->
+<dialog id="tempDlg">
+  <form method="dialog">
+    <h2>임시 비밀번호</h2>
+    <p class="sub">이 화면을 닫으면 다시 볼 수 없습니다. 본인에게 전달해 주세요.</p>
+    <div id="tempBox" class="temp"></div>
+    <menu><button value="ok" class="primary" type="submit">확인했습니다</button></menu>
+  </form>
+</dialog>
+
+<!-- 방문 통계 공개 범위 ──────────────────────────────────────────────── -->
+<dialog id="visitDlg">
+  <form id="visitDlgForm" method="dialog">
+    <h2 id="visitDlgTitle">방문 통계 공개 범위</h2>
+    <p class="sub">체크한 사이트의 방문자 수만 이 기업 계정에 보입니다.</p>
+    <div id="visitDlgList"></div>
+    <menu>
+      <button value="cancel" class="ghost" type="submit" formnovalidate>취소</button>
+      <button value="save" class="primary" type="submit">저장</button>
+    </menu>
+  </form>
+</dialog>
+
+<!-- 매출·환불 직접 입력 ─────────────────────────────────────────────── -->
+<dialog id="ledgerDlg">
+  <form id="ledgerForm" method="dialog">
+    <h2>매출·환불 직접 입력</h2>
+    <p class="sub">결제 기록에 안 잡히는 계좌이체 계약, 결제 칸이 없는 환불 등을 적습니다.</p>
+    <input type="hidden" name="month">
+    <div class="row">
+      <label>구분
+        <select name="kind"><option value="sale">매출</option><option value="refund">환불</option></select>
+      </label>
+      <label>사이트
+        <select name="site">
+          <option>우리동네 직업계고</option><option>기록해</option><option>기타</option>
+        </select>
+      </label>
+    </div>
+    <div class="row">
+      <label>금액(원)<input name="amount" type="number" min="1" step="1" required placeholder="500000"></label>
+      <label>날짜<input name="day" type="date"></label>
+    </div>
+    <label>내용<input name="memo" maxlength="200" placeholder="예: ○○고 계좌이체 계약"></label>
+    <p id="ledgerMsg" class="err" hidden></p>
+    <menu>
+      <button value="cancel" class="ghost" type="submit" formnovalidate>취소</button>
+      <button value="save" class="primary" type="submit">추가</button>
+    </menu>
+  </form>
+</dialog>
+
+<script src="/app.js"></script>
+<script src="/visits.js"></script>
+<script src="/settlement.js"></script>
+<script src="/payroll.js"></script>
+</body>
+</html>

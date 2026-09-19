@@ -1,0 +1,41 @@
+# /etc/systemd/system/work-backend.service
+#
+# 우리업무(workwoori.ggm.kr) 전용 프로세스.
+#
+# **설치할 파이썬 패키지가 없다.** 기록해(diary-backend)의 venv 를 그대로 쓴다.
+# 처음엔 우리동네 직업계고 venv 를 썼는데, 급여명세서 PDF 에 필요한 reportlab 이
+# 기록해 venv 에만 있어서 바꿨다(2026-09-15). 나머지 필요한 라이브러리도 다 있다.
+#
+#   cp /root/hs-portal/deploy/work-backend.service /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable --now work-backend
+#   systemctl status work-backend
+#
+# 워커 2개면 사내 인원에는 충분하다. 늘릴 이유가 생기면 -w 를 올린다.
+#
+# **포트는 8300 이다.** 이 서버에서 이미 쓰는 포트: 8000 우리동네 직업계고,
+# 8010 음성중계, 8100 기록해, 8200 연구·논문(univ.ggm.kr). 처음에 8200 으로
+# 잡았다가 연구·논문 백엔드와 부딪혀 이 서비스가 아예 못 떴다 — 새 서비스를
+# 추가할 때는 `ss -ltnp | grep 127.0.0.1` 로 빈 포트를 먼저 확인할 것.
+
+[Unit]
+Description=우리업무 API (workwoori.ggm.kr)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+User=root
+WorkingDirectory=/root/hs-portal/work-backend
+EnvironmentFile=/root/hs-portal/work-backend/.env
+ExecStart=/root/hs-portal/diary-backend/.venv/bin/gunicorn app.main:app \
+    -k uvicorn.workers.UvicornWorker \
+    -w 2 \
+    -b 127.0.0.1:8300 \
+    --timeout 60 \
+    --access-logfile - \
+    --error-logfile -
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

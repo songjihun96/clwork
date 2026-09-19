@@ -1,0 +1,11 @@
+story-core
+livekit-agents==1.8.2
+pydantic==2.13.5
+pydantic-settings==2.15.0
+sentry-sdk==2.69.1
+
+[dev]
+pytest==9.1.1
+pytest-asyncio==1.4.0
+ruff==0.15.4
+mypy==2.3.1

@@ -1,0 +1,28 @@
+# /etc/systemd/system/udt-backend.service
+# 백엔드(FastAPI)를 gunicorn+uvicorn 워커로 항상 켜두는 설정.
+[Unit]
+Description=ㅇㅈ backend (FastAPI)
+After=network.target
+
+[Service]
+# 운영 서버는 root 로 /root/hs-portal 아래에서 돈다(2026-09-05 systemctl 로 확인).
+# 예전에는 udt 계정 아래 /home/udt 로 적혀 있었는데 실제와 달랐다 — 이 파일대로
+# 다시 설치하면 없는 경로를 보고 서비스가 안 뜬다.
+User=root
+Group=root
+WorkingDirectory=/root/hs-portal/backend
+# .env 를 읽어 환경변수로 넣는다
+EnvironmentFile=/root/hs-portal/backend/.env
+ExecStart=/root/hs-portal/backend/.venv/bin/gunicorn app.main:app \
+    --workers 3 \
+    --worker-class uvicorn.workers.UvicornWorker \
+    --bind 127.0.0.1:8000 \
+    --timeout 60
+# 동시 접속이 늘면 워커가 파일 핸들(소켓)을 금방 다 쓴다. nginx 의
+# worker_connections 와 짝을 맞춰 올려 둔다(diary-backend 와 같은 이유).
+LimitNOFILE=65535
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

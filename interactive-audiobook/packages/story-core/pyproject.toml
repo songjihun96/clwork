@@ -1,0 +1,65 @@
+[project]
+name = "story-core"
+version = "0.1.0"
+description = "Shared domain code for the audiobook platform: models, reading state machine, ingestion, storage, jobs"
+requires-python = ">=3.13"
+dependencies = [
+    "sqlalchemy[asyncio]==2.0.53",
+    "defusedxml==0.7.1",
+    "taskiq==0.12.6",
+    "taskiq-redis==1.2.3",
+    # zoneinfo data for Windows and slim containers
+    "tzdata==2026.4",
+    "boto3==1.43.95",
+    # pgvector: SQLAlchemy type for the embedding column · httpx: OpenAI-compatible providers
+    "pgvector==0.5.0",
+    "httpx==0.28.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "aiosqlite==0.22.1",
+    "hypothesis==6.168.0",
+    "types-defusedxml==0.7.0.20260504",
+]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["story_core*"]
+
+[tool.setuptools.package-data]
+# Prompt templates are versioned files, not code strings: they must ship in the wheel.
+story_core = ["py.typed", "rag/prompts/*.txt"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+asyncio_default_test_loop_scope = "function"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "ASYNC", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# Full-width and typographic punctuation is intentional in Korean text processing.
+"story_core/ingestion/**" = ["RUF001", "RUF003"]
+"tests/**" = ["S101", "S311", "RUF001", "E501"]
+"scripts/**" = ["E402"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+
+[[tool.mypy.overrides]]
+# boto3 ships without type information; stubs lag releases.
+module = ["boto3", "boto3.*", "botocore", "botocore.*"]
+ignore_missing_imports = true

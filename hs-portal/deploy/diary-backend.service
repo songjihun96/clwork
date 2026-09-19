@@ -1,0 +1,23 @@
+# /etc/systemd/system/diary-backend.service
+# 기록해(diary.ggm.kr) 백엔드. UDJ 와 별도 프로세스·별도 DB 로 돈다.
+[Unit]
+Description=기록해 backend (FastAPI)
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/root/hs-portal/diary-backend
+EnvironmentFile=/root/hs-portal/diary-backend/.env
+ExecStart=/root/hs-portal/diary-backend/.venv/bin/gunicorn app.main:app \
+    --workers 2 \
+    --worker-class uvicorn.workers.UvicornWorker \
+    --bind 127.0.0.1:8100 \
+    --timeout 60
+# nginx worker_connections 을 올린 만큼 이쪽도 같이 열어둬야, 부하가 몰릴 때
+# 병목이 여기(파일 디스크립터 부족)로 옮겨오지 않는다.
+LimitNOFILE=65535
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

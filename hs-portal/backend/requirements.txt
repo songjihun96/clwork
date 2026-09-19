@@ -1,0 +1,17 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+sqlalchemy==2.0.36
+pydantic[email]==2.10.4
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+requests==2.32.3
+python-dotenv==1.0.1
+python-multipart==0.0.20
+psycopg2-binary==2.9.10
+cryptography==44.0.0
+gunicorn==23.0.0
+# 오디오 지문(숏츠가 롱폼의 몇 초에서 잘렸는지 소리로 찾기)에 쓴다.
+numpy==2.5.3
+# 진로 테스트 추천 학과 챗봇(career_chat.py). 1.x 는 파이썬 3.10 이상이 필요하다.
+anthropic==1.6.0

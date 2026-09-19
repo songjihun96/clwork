@@ -1,0 +1,12 @@
+{
+  "url": "https://udjcs.ggm.kr",
+  "token": "",
+  "interval": 10,
+  "history_hours": 24,
+  "port": 8777,
+  "widget_width": 430,
+  "widget_height": 860,
+  "widget_x": 60,
+  "widget_y": 60,
+  "always_on_top": true
+}

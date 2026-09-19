@@ -1,0 +1,567 @@
+/* 상담 콘솔.
+   본 사이트는 따뜻한 종이색(#fdf8f4)을 쓴다. 여기는 차가운 회색으로 간다.
+   상담원이 고객 화면과 내부 화면을 한눈에 구분해야 하기 때문이다.
+   브랜드 주황은 '지금 처리해야 할 것'에만 쓴다. 그래야 눈에 띈다. */
+:root {
+  --ink: #1c2024;
+  --ink-soft: #3b444d;
+  --muted: #69737d;
+  --faint: #98a2ac;
+
+  --bg: #eef1f4;          /* 화면 바닥 */
+  --surface: #ffffff;
+  --raised: #f7f9fb;
+  --line: #dde3e9;
+  --line-soft: #eaeef2;
+
+  --bar: #22282e;         /* 상단 접속 상태 바 */
+  --bar-ink: #cfd6dd;
+
+  --signal: #f26522;      /* 패밀리 브랜드 주황 — 대기 건에만 */
+  --signal-soft: #fef0e8;
+  --signal-deep: #c44a12;
+
+  --ok: #157f5f;
+  --ok-soft: #e6f4ef;
+  --warn: #9a6700;
+  --warn-soft: #fdf3d7;
+  --danger: #c02b2b;
+  --danger-soft: #fdecec;
+
+  --radius: 8px;
+  --rail: 208px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: Pretendard Variable, Pretendard, -apple-system, system-ui, sans-serif;
+  line-height: 1.55;
+  -webkit-text-size-adjust: 100%;
+  /* 숫자가 자리를 옮기지 않아야 목록을 훑기 쉽다. */
+  font-variant-numeric: tabular-nums;
+}
+
+a { color: var(--signal-deep); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+button, input, select, textarea { font: inherit; color: inherit; }
+
+:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+
+/* ── 접속 상태 바 ────────────────────────────────────────────
+   이 화면의 성격을 말해주는 자리. 어떤 경로로 들어왔는지 늘 보인다. */
+.statusbar {
+  background: var(--bar);
+  color: var(--bar-ink);
+  padding: 0 18px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 13px;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+.statusbar .brand {
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.01em;
+}
+.statusbar .brand span { color: var(--signal); }
+.statusbar .spacer { flex: 1; }
+.statusbar .who { color: #fff; font-weight: 600; }
+.statusbar button {
+  background: transparent;
+  border: 1px solid #3d454d;
+  color: var(--bar-ink);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.statusbar button:hover { border-color: #5a636c; color: #fff; }
+
+.access {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #2f373f;
+}
+.access .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+.access.device .dot { background: #6aa9e0; }
+.access.admin .dot { background: var(--signal); }
+
+/* ── 레이아웃 ───────────────────────────────────────────────── */
+.shell { display: flex; min-height: calc(100vh - 44px); }
+
+.rail {
+  width: var(--rail);
+  flex: 0 0 var(--rail);
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  padding: 14px 10px;
+}
+.rail nav { display: flex; flex-direction: column; gap: 2px; }
+.rail a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 11px;
+  border-radius: 6px;
+  color: var(--ink-soft);
+  font-size: 14px;
+  font-weight: 500;
+}
+.rail a:hover { background: var(--raised); text-decoration: none; }
+.rail a.on { background: var(--ink); color: #fff; }
+.rail a.on .count { background: var(--signal); color: #fff; }
+.rail .count {
+  background: var(--signal-soft);
+  color: var(--signal-deep);
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 12px;
+  font-weight: 700;
+  min-width: 20px;
+  text-align: center;
+}
+.rail .group {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+  padding: 16px 11px 6px;
+}
+
+.main { flex: 1; min-width: 0; padding: 22px 26px 60px; }
+.page-head { margin-bottom: 16px; }
+.page-head h1 { font-size: 20px; font-weight: 700; margin: 0 0 3px; letter-spacing: -0.02em; }
+.page-head p { margin: 0; color: var(--muted); font-size: 13px; }
+
+/* ── 카드·표 ───────────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.card + .card { margin-top: 14px; }
+.card h2 {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.toolbar input, .toolbar select {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 10px;
+  background: var(--surface);
+  font-size: 14px;
+}
+.toolbar input { min-width: 220px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+  padding: 0 10px 8px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+td { padding: 11px 10px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+tbody tr:hover { background: var(--raised); }
+tbody tr:last-child td { border-bottom: 0; }
+td.num { text-align: right; }
+.row-click { cursor: pointer; }
+
+/* 가려진 값은 일부러 다르게 보이게 한다. 원본과 헷갈리면 안 된다. */
+.masked {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  letter-spacing: -0.01em;
+}
+
+/* ── 배지 ──────────────────────────────────────────────────── */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.badge.wait { background: var(--signal-soft); color: var(--signal-deep); }
+.badge.done { background: var(--ok-soft); color: var(--ok); }
+.badge.hold { background: var(--warn-soft); color: var(--warn); }
+.badge.stop { background: var(--danger-soft); color: var(--danger); }
+.badge.flat { background: var(--raised); color: var(--muted); }
+
+/* ── 버튼 ──────────────────────────────────────────────────── */
+.btn {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 6px;
+  padding: 7px 13px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--ink-soft);
+}
+.btn:hover { background: var(--raised); border-color: #c9d2da; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+.btn.primary:hover { background: #333c45; }
+.btn.go { background: var(--signal); border-color: var(--signal); color: #fff; }
+.btn.go:hover { background: var(--signal-deep); border-color: var(--signal-deep); }
+.btn.danger { color: var(--danger); border-color: #f0cccc; }
+.btn.danger:hover { background: var(--danger-soft); }
+.btn.sm { padding: 4px 9px; font-size: 12.5px; }
+.btn-row { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ── 대시보드 큐 ───────────────────────────────────────────── */
+.queue { display: grid; grid-template-columns: repeat(auto-fit, minmax(158px, 1fr)); gap: 12px; }
+.queue a {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 15px 16px;
+  color: var(--ink);
+  display: block;
+}
+.queue a:hover { border-color: var(--signal); text-decoration: none; }
+.queue .n { font-size: 27px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
+.queue .n.zero { color: var(--faint); font-weight: 600; }
+.queue .k { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+
+/* ── 폼 ────────────────────────────────────────────────────── */
+.field { margin-bottom: 12px; }
+.field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.field input, .field textarea, .field select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--surface);
+  font-size: 14px;
+}
+.field textarea { resize: vertical; min-height: 84px; line-height: 1.6; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+
+/* ── 알림 ──────────────────────────────────────────────────── */
+.note {
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 13px;
+  margin-bottom: 12px;
+  border: 1px solid transparent;
+}
+.note.info { background: var(--raised); border-color: var(--line); color: var(--ink-soft); }
+.note.warn { background: var(--warn-soft); border-color: #f0e0b0; color: var(--warn); }
+.note.bad { background: var(--danger-soft); border-color: #f2cccc; color: var(--danger); }
+.note.good { background: var(--ok-soft); border-color: #c9e6db; color: var(--ok); }
+
+.empty { text-align: center; padding: 40px 16px; color: var(--muted); font-size: 14px; }
+.muted { color: var(--muted); }
+.tiny { font-size: 12px; }
+
+/* ── 모달 ──────────────────────────────────────────────────── */
+.veil {
+  position: fixed; inset: 0; background: rgba(20, 25, 30, 0.5);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px; z-index: 50;
+}
+.modal {
+  background: var(--surface);
+  border-radius: 10px;
+  width: 100%;
+  max-width: 560px;
+  max-height: 88vh;
+  overflow-y: auto;
+  padding: 20px;
+}
+.modal h3 { margin: 0 0 4px; font-size: 17px; font-weight: 700; }
+.modal .sub { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+.modal-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+
+/* ── 로그인 ────────────────────────────────────────────────── */
+.gate {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: var(--bar);
+}
+.gate-box {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 30px 28px;
+  width: 100%;
+  max-width: 384px;
+}
+.gate-box h1 { font-size: 19px; margin: 0 0 4px; letter-spacing: -0.02em; }
+.gate-box h1 span { color: var(--signal); }
+.gate-box .sub { color: var(--muted); font-size: 13px; margin: 0 0 22px; }
+.gate-box .btn { width: 100%; margin-top: 4px; }
+
+.code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-align: center;
+  padding: 16px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 14px 0;
+}
+
+/* ── 좁은 화면 ─────────────────────────────────────────────── */
+@media (max-width: 820px) {
+  .shell { flex-direction: column; }
+  .rail { width: auto; flex: none; border-right: 0; border-bottom: 1px solid var(--line); padding: 8px; }
+  .rail nav { flex-direction: row; overflow-x: auto; gap: 4px; }
+  .rail a { white-space: nowrap; }
+  .rail .group { display: none; }
+  .main { padding: 16px 14px 50px; }
+  .grid2 { grid-template-columns: 1fr; }
+  table { font-size: 13px; }
+  td, th { padding-left: 6px; padding-right: 6px; }
+}
+
+/* ── 전화 상담 ───────────────────────────────────────────────
+   콜 콘솔은 목록 화면과 성격이 다르다. 벨이 울리는 20초 안에 상담원이
+   해야 할 일은 하나뿐이라, 그 순간에는 다른 것을 다 밀어낸다. */
+
+.phonetag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #2f373f;
+  color: var(--bar-ink);
+}
+.phonetag:hover { text-decoration: none; color: #fff; }
+.phonetag .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
+.phonetag.ready .dot { background: var(--ok); }
+.phonetag.busy .dot { background: #6aa9e0; }
+.phonetag.ring {
+  background: var(--signal);
+  color: #fff;
+  animation: ringpulse 1s ease-in-out infinite;
+}
+.phonetag.ring .dot { background: #fff; }
+
+@keyframes ringpulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+/* 상담원 상태 바 */
+.callbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  margin-bottom: 14px;
+}
+.callbar .spacer { flex: 1; }
+.callbar-who { display: flex; align-items: center; gap: 10px; }
+.callbar-who strong { font-size: 14px; }
+.callbar .live { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
+.callbar .live .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
+.callbar .live.on .dot { background: var(--ok); }
+.callbar .live.off .dot { background: var(--danger); }
+.callbar .mic { display: flex; align-items: center; gap: 8px; }
+.callbar .timer { display: flex; align-items: center; gap: 8px; }
+.callbar .timer strong { font-size: 17px; letter-spacing: -0.01em; }
+
+/* 마이크 입력 크기. 말로만 "마이크 켜짐"이라고 하면 믿기 어렵다. */
+.meter {
+  display: inline-block;
+  width: 64px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+.meter span {
+  display: block;
+  height: 100%;
+  background: var(--ok);
+  transition: width 90ms linear;
+}
+
+/* 수신 중. 이 화면에서 가장 커야 한다. */
+.incoming {
+  background: var(--signal-soft);
+  border: 2px solid var(--signal);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  margin-bottom: 16px;
+  text-align: center;
+}
+.incoming-mark {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--signal-deep);
+  letter-spacing: 0.04em;
+}
+.incoming-no {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 4px 0 2px;
+}
+.incoming-who { font-size: 14px; color: var(--ink-soft); min-height: 22px; }
+.incoming-act { display: flex; justify-content: center; gap: 10px; margin-top: 14px; }
+.btn.big { padding: 10px 30px; font-size: 15px; font-weight: 700; }
+
+/* 3단 콘솔 */
+.console {
+  display: grid;
+  grid-template-columns: 240px 1fr 1fr;
+  gap: 14px;
+  align-items: start;
+}
+.console-col {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px 18px;
+}
+.console-col h2 {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+  margin: 0 0 10px;
+  text-transform: none;
+}
+@media (max-width: 1100px) {
+  .console { grid-template-columns: 1fr; }
+}
+
+.calllist { list-style: none; margin: 0; padding: 0; }
+.calllist li {
+  padding: 8px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  margin-bottom: 6px;
+  background: var(--raised);
+}
+.calllist li.queued { border-color: var(--signal); background: var(--signal-soft); }
+.calllist .no { font-weight: 600; font-size: 13.5px; }
+
+.cust-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.cust-head strong { font-size: 16px; }
+
+.sub-head {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+  margin: 16px 0 6px;
+}
+
+/* 이름-값 목록. 표를 쓰기엔 짧고, 문단을 쓰기엔 규칙적인 자료. */
+.kv { display: grid; grid-template-columns: 84px 1fr; gap: 5px 12px; margin: 0; font-size: 13.5px; }
+.kv dt { color: var(--muted); font-size: 12.5px; }
+.kv dd { margin: 0; }
+
+.minilist { list-style: none; margin: 0; padding: 0; }
+.minilist li {
+  display: grid;
+  grid-template-columns: 110px 1fr auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 0;
+  border-top: 1px solid var(--line-soft);
+  font-size: 13px;
+}
+
+.check { display: flex; align-items: flex-start; gap: 8px; margin: 10px 0; font-size: 13.5px; }
+.check input { margin-top: 3px; }
+
+/* 통계 타일. .queue 와 같은 격자를 쓰되 링크가 아니다. */
+.tile {
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+.tile .n { font-size: 27px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
+.tile .n.zero { color: var(--faint); font-weight: 600; }
+.tile .k { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+
+/* 그래프 위 말풍선. 계열 색은 점에만 쓰고 글자는 먹색 그대로 둔다. */
+.charttip {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  box-shadow: 0 4px 14px rgba(28, 32, 36, 0.1);
+  font-size: 12.5px;
+}
+.charttip-k { font-weight: 700; margin-bottom: 4px; }
+.charttip-v { display: flex; align-items: center; gap: 6px; color: var(--ink-soft); }
+.charttip-v strong { margin-left: auto; }
+.charttip .swatch { width: 8px; height: 8px; border-radius: 2px; }
+
+/* 내가 건 전화. 걸려온 전화(주황 테두리)와 색을 달리해야,
+   벨이 울리는 것과 내가 건 것을 순간적으로 구분한다. */
+.outgoing {
+  background: #eef4fa;
+  border: 2px solid #6aa9e0;
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  text-align: center;
+}
+.outgoing-mark {
+  font-size: 13px;
+  font-weight: 700;
+  color: #2f6fb0;
+  letter-spacing: 0.04em;
+}
+.outgoing .incoming-no { font-size: 26px; }

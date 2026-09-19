@@ -1,0 +1,38 @@
+# /etc/systemd/system/diary-ai-worker@.service
+# AI 작업 전담 워커. AI_QUEUE_BACKEND=redis 로 바꿨을 때만 필요하다
+# (기본값 "db" 로 쓰는 동안에는 이 서비스를 아예 등록하지 않아도 된다).
+#
+# 웹서버(diary-backend.service)와 완전히 분리된 프로세스라, 이 서비스만
+# 여러 인스턴스로 띄워 AI 처리량을 독립적으로 늘릴 수 있다 — gunicorn
+# 워커 수(=웹 요청 처리 능력)를 안 건드리고 AI 처리만 늘리는 방법이다.
+#
+# 설치:
+#   1) 이 파일을 /etc/systemd/system/diary-ai-worker@.service 로 복사
+#   2) Redis 서버가 떠 있어야 한다(예: apt install redis-server, systemctl enable --now redis-server)
+#   3) diary-backend/.env 에 AI_QUEUE_BACKEND=redis 와 AI_REDIS_URL 을 설정
+#   4) systemctl daemon-reload
+#   5) 원하는 개수만큼 띄우기(@ 뒤에 아무 이름이나 붙이면 별도 인스턴스가 된다):
+#        systemctl enable --now diary-ai-worker@1
+#        systemctl enable --now diary-ai-worker@2
+#        systemctl enable --now diary-ai-worker@3
+#      (인스턴스 수 = 동시에 처리할 수 있는 AI 요청 최대치)
+#   6) 상태 확인: systemctl status 'diary-ai-worker@*'
+#
+# 원래대로(스레드 폴링 방식)로 되돌리려면: .env 의 AI_QUEUE_BACKEND 를
+# 지우거나 "db"로 바꾸고, diary-backend.service 만 재시작하면 된다 —
+# 이 워커 서비스들은 그냥 중지해도 된다(코드 쪽은 자동으로 원래 방식으로 돈다).
+[Unit]
+Description=기록해 AI 작업 워커 (%i)
+After=network.target redis-server.service
+Requires=redis-server.service
+
+[Service]
+User=root
+WorkingDirectory=/root/hs-portal/diary-backend
+EnvironmentFile=/root/hs-portal/diary-backend/.env
+ExecStart=/root/hs-portal/diary-backend/.venv/bin/python -m app.ai_worker
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

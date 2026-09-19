@@ -1,0 +1,42 @@
+# 비밀값 - 절대 커밋 금지
+backend/.env
+diary-backend/.env
+deploy/.env
+*.pem
+*.key
+
+# 데이터베이스
+*.db
+*.sqlite3
+
+# 파이썬
+backend/.venv/
+diary-backend/.venv/
+__pycache__/
+*.pyc
+
+# 프론트
+frontend/node_modules/
+frontend/dist/
+frontend-journal/node_modules/
+frontend-journal/dist/
+frontend-cs/node_modules/
+frontend-cs/dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 업로드된 공지 이미지
+backend/uploads/
+backend/media/
+diary-backend/uploads/
+
+# 학생이 올린 포트폴리오 사진(로컬 저장)
+diary-backend/media/
+
+# 대용량 배포 zip
+*.zip
+
+# 감시 위젯의 개인 설정 — 서버 토큰이 들어간다. 저장소에 올리면 안 된다.
+tools/server-monitor/config.json

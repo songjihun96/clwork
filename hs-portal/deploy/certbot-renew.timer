@@ -1,0 +1,19 @@
+# /etc/systemd/system/certbot-renew.timer
+#
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now certbot-renew.timer
+#   systemctl list-timers certbot-renew --no-pager
+[Unit]
+Description=하루 두 번 인증서 갱신 확인
+
+[Timer]
+# 인증서는 만료 30일 전부터 갱신된다. 하루 두 번이면 한 번 실패해도
+# 여유가 충분하다.
+OnCalendar=*-*-* 03,15:00:00
+# 전 세계 서버가 정각에 몰리면 Let's Encrypt 가 힘들어한다. 흩어서 보낸다.
+RandomizedDelaySec=3600
+# 서버가 꺼져 있어 놓친 실행은 켜질 때 한 번 따라잡는다.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,18 @@
+User-agent: *
+Allow: /
+Disallow: /login
+Disallow: /signup
+Disallow: /find-account
+Disallow: /account
+Disallow: /favorites
+Disallow: /my-school
+Disallow: /admin
+Disallow: /journal
+Disallow: /journal-share/
+Disallow: /api/
+
+# 네이버 검색로봇(Yeti)도 명시적으로 허용
+User-agent: Yeti
+Allow: /
+
+Sitemap: https://udjschool.ggm.kr/sitemap.xml

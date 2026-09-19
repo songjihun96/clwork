@@ -1,0 +1,11 @@
+sqlalchemy[asyncio]==2.0.53
+defusedxml==0.7.1
+taskiq==0.12.6
+taskiq-redis==1.2.3
+
+[dev]
+pytest==9.1.1
+pytest-asyncio==1.4.0
+aiosqlite==0.22.1
+hypothesis==6.168.0
+types-defusedxml==0.7.0.20260504

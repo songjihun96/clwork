@@ -1,0 +1,142 @@
+# Local development stack: PostgreSQL (pgvector) + Redis + API + worker.
+#   docker compose up --build
+# Versions verified 2026-09-15 (Docker Hub). Mobile app runs outside Docker (npx expo start).
+
+name: audiobook
+
+x-app-env: &app-env
+  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-audiobook}:${POSTGRES_PASSWORD:-audiobook}@postgres:5432/${POSTGRES_DB:-audiobook}
+  REDIS_URL: redis://redis:6379/0
+  STORAGE_LOCAL_ROOT: /data/storage
+  # API and worker must agree on these, or audio cache keys differ.
+  AUDIO_FORMAT: aac
+  TTS_PROVIDER: fake
+  PUBLIC_BASE_URL: http://localhost:8000
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.6-pg18-trixie
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-audiobook}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-audiobook}
+      POSTGRES_DB: ${POSTGRES_DB:-audiobook}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # PostgreSQL 18 images keep data under /var/lib/postgresql/<major>/, so mount the parent directory.
+      - postgres-data:/var/lib/postgresql
+      - ./infrastructure/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:8.8.2-trixie
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    command: ["alembic", "upgrade", "head"]
+    env_file: .env
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    env_file: .env
+    environment: *app-env
+    ports:
+      - "8000:8000"
+    volumes:
+      # Local storage shared with the worker until S3/R2 arrives (Phase 3).
+      - book-storage:/data/storage
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: services/worker/Dockerfile
+    env_file: .env
+    environment: *app-env
+    volumes:
+      - book-storage:/data/storage
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  # Local LiveKit server for Talk mode development (no cloud account needed):
+  #   docker compose --profile realtime up -d livekit
+  # Dev mode ships a well-known key pair (devkey/secret), which the API refuses in production.
+  # host networking is not used: LiveKit needs its UDP range reachable, so ports are published.
+  livekit:
+    image: livekit/livekit-server:v1.13.7
+    profiles: ["realtime"]
+    command: ["--config", "/etc/livekit.yaml", "--node-ip", "127.0.0.1"]
+    volumes:
+      - ./infrastructure/livekit/livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      - "127.0.0.1:7880:7880"
+      - "127.0.0.1:7881:7881"
+      - "127.0.0.1:50100-50120:50100-50120/udp"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:7880/"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Story agent: narrates and answers inside the reading session's room (Phase 6).
+  #   docker compose --profile realtime up -d ai-agent
+  ai-agent:
+    build:
+      context: .
+      dockerfile: services/ai-agent/Dockerfile
+    profiles: ["realtime"]
+    env_file: .env
+    environment:
+      <<: *app-env
+      LIVEKIT_URL: ws://livekit:7880
+    volumes:
+      # Reads the sentence audio the worker rendered, so Talk mode never re-synthesises it.
+      - book-storage:/data/storage:ro
+    depends_on:
+      livekit:
+        condition: service_healthy
+
+  # S3-compatible mock for storage contract tests (not used by the app by default):
+  #   docker compose --profile s3 up -d s3mock
+  s3mock:
+    image: adobe/s3mock:5.2.2
+    profiles: ["s3"]
+    environment:
+      COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: audiobook-test
+    ports:
+      - "127.0.0.1:9090:9090"
+
+volumes:
+  postgres-data:
+  redis-data:
+  book-storage:

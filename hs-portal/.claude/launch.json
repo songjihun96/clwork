@@ -1,0 +1,104 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "udj-backend",
+      "runtimeExecutable": "backend/.venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "app.main:app",
+        "--reload",
+        "--port",
+        "8000",
+        "--app-dir",
+        "backend"
+      ],
+      "port": 8000
+    },
+    {
+      "name": "udj-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "frontend",
+        "run",
+        "dev"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "diary-backend",
+      "runtimeExecutable": "diary-backend/.venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "app.main:app",
+        "--reload",
+        "--port",
+        "8100",
+        "--app-dir",
+        "diary-backend"
+      ],
+      "port": 8100
+    },
+    {
+      "name": "diary-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "frontend-journal",
+        "run",
+        "dev"
+      ],
+      "port": 5174
+    },
+    {
+      "name": "cs-demo-backend",
+      "runtimeExecutable": "backend/.venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "app.cc_demo"
+      ],
+      "cwd": "backend",
+      "port": 8000
+    },
+    {
+      "name": "cs-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "frontend-cs",
+        "run",
+        "dev"
+      ],
+      "port": 5175
+    },
+    {
+      "name": "research-backend",
+      "runtimeExecutable": "diary-backend/.venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "app.main:app",
+        "--reload",
+        "--port",
+        "8200",
+        "--app-dir",
+        "research-backend"
+      ],
+      "port": 8200
+    },
+    {
+      "name": "research-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "frontend-research",
+        "run",
+        "dev"
+      ],
+      "port": 5176
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+Metadata-Version: 2.4
+Name: audiobook-api
+Version: 0.1.0
+Summary: Control-plane REST API for the AI interactive audiobook platform
+Requires-Python: >=3.13
+Requires-Dist: story-core
+Requires-Dist: fastapi==0.141.1
+Requires-Dist: python-multipart==0.0.32
+Requires-Dist: uvicorn[standard]==0.53.0
+Requires-Dist: pydantic==2.13.5
+Requires-Dist: pydantic-settings==2.15.0
+Requires-Dist: email-validator==2.3.0
+Requires-Dist: sqlalchemy[asyncio]==2.0.53
+Requires-Dist: asyncpg==0.31.0
+Requires-Dist: alembic==1.20.0
+Requires-Dist: redis==8.1.0
+Requires-Dist: pyjwt[crypto]==2.14.0
+Requires-Dist: argon2-cffi==25.1.0
+Requires-Dist: sentry-sdk==2.69.1
+Provides-Extra: dev
+Requires-Dist: pytest==9.1.1; extra == "dev"
+Requires-Dist: pytest-asyncio==1.4.0; extra == "dev"
+Requires-Dist: httpx==0.28.1; extra == "dev"
+Requires-Dist: aiosqlite==0.22.1; extra == "dev"
+Requires-Dist: fakeredis==2.38.0; extra == "dev"
+Requires-Dist: hypothesis==6.168.0; extra == "dev"
+Requires-Dist: types-defusedxml==0.7.0.20260504; extra == "dev"
+Requires-Dist: ruff==0.16.7; extra == "dev"
+Requires-Dist: mypy==2.3.1; extra == "dev"

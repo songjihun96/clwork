@@ -1,0 +1,15 @@
+Metadata-Version: 2.4
+Name: audiobook-ai-agent
+Version: 0.1.0
+Summary: LiveKit agent worker for Talk mode (Phase 5: echo agent for latency measurement)
+Requires-Python: >=3.13
+Requires-Dist: story-core
+Requires-Dist: livekit-agents==1.8.2
+Requires-Dist: pydantic==2.13.5
+Requires-Dist: pydantic-settings==2.15.0
+Requires-Dist: sentry-sdk==2.69.1
+Provides-Extra: dev
+Requires-Dist: pytest==9.1.1; extra == "dev"
+Requires-Dist: pytest-asyncio==1.4.0; extra == "dev"
+Requires-Dist: ruff==0.15.4; extra == "dev"
+Requires-Dist: mypy==2.3.1; extra == "dev"

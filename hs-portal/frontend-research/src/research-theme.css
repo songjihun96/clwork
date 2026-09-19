@@ -1,0 +1,127 @@
+/* 연구 플랫폼 전용 팔레트. 기존 화면(styles.css)은 건드리지 않는다 —
+   `.research-theme` 아래에서만 색 토큰을 새로 정의해, 기존 구조 클래스
+   (.btn, .panel, .input, .field 등)를 그대로 재사용하면서 색만 바뀌게 한다.
+   전체 화면 전환(cutover) 전까지는 /research/* 페이지에만 이 클래스를 씌운다. */
+.research-theme {
+  --color-background: #f7f7f5;
+  --color-surface: #ffffff;
+  --color-text: #181818;
+  --color-text-secondary: #6b6b6b;
+  --color-text-muted: #a0a0a0;
+  --color-border: #e6e6e3;
+  --color-primary: #3157d5;
+  --color-primary-text: #ffffff;
+  --color-primary-hover: #2544ad;
+
+  --color-accent: #3157d5;
+  --color-accent-soft: #e8edfb;
+  --color-secondary-accent: #00a98f;
+  --color-secondary-accent-soft: #e0f7f3;
+  --color-attention: #f59e0b;
+  --color-attention-soft: #fef3e0;
+
+  --color-success: #00a98f;
+  --color-success-bg: #e0f7f3;
+  --color-danger: #d5314d;
+  --color-danger-bg: #fbe4e8;
+  --color-warning: var(--color-attention);
+  --color-warning-bg: var(--color-attention-soft);
+
+  --ink: var(--color-text);
+  --ink-soft: #303030;
+  --steel: var(--color-text-secondary);
+  --steel-light: var(--color-text-muted);
+  --paper: var(--color-background);
+  --surface: var(--color-surface);
+  --line: var(--color-border);
+  --signal: var(--color-accent);
+  --signal-deep: var(--color-primary-hover);
+  --signal-soft: var(--color-accent-soft);
+  --alert: var(--color-danger);
+  --verify: var(--color-success);
+  --raised: #f0f0ee;
+
+  background: var(--color-background);
+  color: var(--color-text);
+  min-height: 100vh;
+}
+
+/* AI 대화 UI — 이 페이지에서만 쓰는 채팅형 말풍선 */
+.research-chat { display: flex; flex-direction: column; gap: 12px; }
+.research-chat-turn { display: flex; }
+.research-chat-turn.role-student { justify-content: flex-end; }
+.research-chat-turn.role-ai { justify-content: flex-start; }
+.research-chat-bubble {
+  max-width: 72%;
+  padding: 10px 14px;
+  border-radius: var(--radius-lg);
+  font-size: 14.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.research-chat-turn.role-student .research-chat-bubble {
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  border-bottom-right-radius: 4px;
+}
+.research-chat-turn.role-ai .research-chat-bubble {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-bottom-left-radius: 4px;
+}
+
+.research-topic-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+  background: var(--color-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: pointer;
+  transition: border-color .15s, box-shadow .15s;
+}
+.research-topic-card:hover {
+  border-color: var(--color-primary);
+  box-shadow: 0 2px 12px rgba(49, 87, 213, .1);
+}
+.research-topic-card.selected {
+  border-color: var(--color-primary);
+  background: var(--color-accent-soft);
+}
+
+.research-chat-typing { padding: 12px 16px; }
+.research-typing-dots { display: inline-flex; gap: 4px; align-items: center; }
+.research-typing-dots span {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--color-text-muted);
+  animation: research-typing-bounce 1.2s infinite ease-in-out;
+}
+.research-typing-dots span:nth-child(2) { animation-delay: .15s; }
+.research-typing-dots span:nth-child(3) { animation-delay: .3s; }
+@keyframes research-typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: .5; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+/* 연구실 화면 전용 넓은 레이아웃 — 화면이 넓을 때 오른쪽 빈 공간에
+   중간 리포트를 사이드바로 둔다. 좁아지면 그냥 아래로 쌓인다. */
+.research-workspace-wrap { width: min(1180px, 100% - 32px); margin: 0 auto; }
+.research-workspace-layout { display: grid; grid-template-columns: 1fr 320px; gap: 24px; align-items: start; }
+.research-workspace-sidebar { position: sticky; top: 20px; display: grid; gap: 24px; }
+@media (max-width: 900px) {
+  .research-workspace-layout { grid-template-columns: 1fr; }
+  .research-workspace-sidebar { position: static; }
+}
+
+.research-stage-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--color-accent-soft);
+  color: var(--color-primary);
+  font-size: 12.5px;
+  font-weight: 600;
+}

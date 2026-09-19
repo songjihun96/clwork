@@ -1,0 +1,16 @@
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+dist/
+build/
+.next/
+.cache/
+
+*.log
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

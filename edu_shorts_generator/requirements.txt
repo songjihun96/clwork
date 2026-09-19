@@ -1,0 +1,4 @@
+openai-whisper>=20231117
+anthropic>=0.40.0
+torch>=2.1.0
+pyinstaller>=6.0.0

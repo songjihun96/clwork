@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>서버 감시</title>
+<link rel="stylesheet" href="app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6' fill='%230ca30c'/></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span id="statusDot" class="dot" aria-hidden="true"></span>
+    <h1 id="hostname">연결 중…</h1>
+    <span id="statusText" class="pill">확인 중</span>
+  </div>
+  <div class="topbar-right">
+    <span id="stamp" class="muted"></span>
+    <button id="themeBtn" class="ghost" type="button" title="밝게/어둡게">◐</button>
+    <button id="sizeBtn" class="ghost" type="button" title="위젯/전체 보기">⤢</button>
+    <button id="setupBtn" class="ghost" type="button" title="설정">설정</button>
+  </div>
+</header>
+
+<div id="banner" class="banner" hidden></div>
+
+<main id="main" class="wrap">
+
+  <!-- 1. 사이트별 지금 접속자 --------------------------------------------->
+  <section class="panel">
+    <div class="panel-head">
+      <h2>지금 접속자</h2>
+      <span class="muted">최근 5분 안에 요청이 있었던 사람 (봇 제외)</span>
+    </div>
+    <div id="siteTiles" class="tiles"></div>
+  </section>
+
+  <!-- 2. 접속자 추이 ------------------------------------------------------->
+  <section class="panel">
+    <div class="panel-head">
+      <h2>접속자 추이</h2>
+      <div class="filters" data-full role="group" aria-label="기간">
+        <button class="chip" data-hours="6">6시간</button>
+        <button class="chip is-on" data-hours="24">24시간</button>
+        <button class="chip" data-hours="72">3일</button>
+        <button class="chip" data-hours="168">7일</button>
+      </div>
+    </div>
+    <div id="trendLegend" class="legend"></div>
+    <figure class="chart" id="trendWrap">
+      <svg id="trend" viewBox="0 0 960 260" role="img" aria-label="사이트별 접속자 추이"></svg>
+      <div id="trendTip" class="tip" hidden></div>
+      <figcaption id="trendCap" class="muted"></figcaption>
+    </figure>
+  </section>
+
+  <!-- 3. 트래픽 구성 ------------------------------------------------------->
+  <div class="grid grid-3">
+    <section class="panel">
+      <div class="panel-head"><h2>요청 비중</h2><span class="muted">최근 60분</span></div>
+      <div class="donut-row">
+        <svg id="donut" viewBox="0 0 160 160" role="img" aria-label="사이트별 요청 비중"></svg>
+        <ul id="donutLegend" class="legend-list"></ul>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>응답 상태</h2><span class="muted">최근 60분</span></div>
+      <svg id="statusBar" viewBox="0 0 320 22" role="img" aria-label="상태코드 분포"></svg>
+      <ul id="statusLegend" class="legend-list"></ul>
+    </section>
+
+    <section class="panel" data-full>
+      <div class="panel-head"><h2>응답 속도</h2><span class="muted">nginx 기준</span></div>
+      <div class="stat-pair">
+        <div class="stat"><b id="p50">–</b><span>중앙값 p50</span></div>
+        <div class="stat"><b id="p95">–</b><span>느린 쪽 p95</span></div>
+      </div>
+      <div id="rtNote" class="muted small"></div>
+    </section>
+  </div>
+
+  <!-- 4. 서버 자원 --------------------------------------------------------->
+  <section class="panel">
+    <div class="panel-head"><h2>서버</h2><span id="sysNote" class="muted"></span></div>
+    <div class="grid grid-4">
+      <div class="gauge-card">
+        <svg id="gCpu" viewBox="0 0 120 92" role="img" aria-label="CPU 사용률"></svg>
+        <div class="gauge-cap">CPU</div>
+      </div>
+      <div class="gauge-card">
+        <svg id="gMem" viewBox="0 0 120 92" role="img" aria-label="메모리 사용률"></svg>
+        <div class="gauge-cap">메모리 <span id="memSub" class="muted"></span></div>
+      </div>
+      <div class="gauge-card">
+        <svg id="gDisk" viewBox="0 0 120 92" role="img" aria-label="디스크 사용률"></svg>
+        <div class="gauge-cap">디스크 <span id="diskSub" class="muted"></span></div>
+      </div>
+      <div class="kv-card">
+        <div class="kv"><span>코어당 부하</span><b id="load">–</b></div>
+        <div class="kv"><span>가동 시간</span><b id="uptime">–</b></div>
+        <div class="kv"><span>30일 가동률</span><b id="uppct">–</b></div>
+        <div class="kv"><span>DB 연결</span><b id="dbconn">–</b></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. 서비스 ----------------------------------------------------------->
+  <section class="panel">
+    <div class="panel-head"><h2>서비스</h2><span id="svcNote" class="muted"></span></div>
+    <div id="services" class="chips"></div>
+  </section>
+
+  <!-- 6. 어디를 보나 / 어디서 오나 ------------------------------------------>
+  <div class="grid grid-2">
+    <section class="panel" data-full>
+      <div class="panel-head"><h2>많이 열린 곳</h2><span class="muted">최근 60분</span></div>
+      <svg id="paths" viewBox="0 0 480 200" role="img" aria-label="많이 열린 경로"></svg>
+    </section>
+    <section class="panel" data-full>
+      <div class="panel-head"><h2>유입 경로</h2><span class="muted">최근 60분</span></div>
+      <svg id="refs" viewBox="0 0 480 200" role="img" aria-label="유입 경로"></svg>
+    </section>
+  </div>
+
+  <!-- 7. 나머지 카드 -------------------------------------------------------->
+  <div class="grid grid-3">
+    <section class="panel" data-full>
+      <div class="panel-head"><h2>오늘</h2><span class="muted">우리동네 직업계고</span></div>
+      <div id="today" class="kv-card"></div>
+    </section>
+    <section class="panel" data-full>
+      <div class="panel-head"><h2>인증서 · 백업</h2></div>
+      <div id="upkeep" class="kv-card"></div>
+    </section>
+    <section class="panel" data-full>
+      <div class="panel-head"><h2>외부 연동</h2></div>
+      <div id="deps" class="chips chips-col"></div>
+    </section>
+  </div>
+
+  <div class="grid grid-2">
+    <section class="panel" data-full>
+      <div class="panel-head"><h2>보안</h2><span class="muted">최근 60분</span></div>
+      <div id="security" class="kv-card"></div>
+    </section>
+    <section class="panel" data-full>
+      <div class="panel-head"><h2>에러 로그</h2><span id="errNote" class="muted"></span></div>
+      <div id="errors" class="loglist"></div>
+    </section>
+  </div>
+
+  <section class="panel" data-full>
+    <div class="panel-head">
+      <h2>데이터베이스</h2>
+      <span id="dbNote" class="muted"></span>
+    </div>
+    <svg id="tables" viewBox="0 0 960 170" role="img" aria-label="큰 테이블"></svg>
+  </section>
+
+</main>
+
+<!-- 설정 --------------------------------------------------------------->
+<dialog id="setup">
+  <form method="dialog" id="setupForm">
+    <h2>서버 감시 설정</h2>
+    <label>서버 주소
+      <input name="url" type="text" placeholder="https://udjcs.ggm.kr" required>
+      <small>백엔드가 붙어 있는 주소면 됩니다.</small>
+    </label>
+    <label>감시 토큰
+      <input name="token" type="password" placeholder="서버 .env 의 MONITOR_TOKEN" required>
+      <small>이 값은 내 PC 의 config.json 에만 저장되고 브라우저로는 안 나갑니다.</small>
+    </label>
+    <label>갱신 주기(초)
+      <input name="interval" type="number" min="3" max="300" value="10">
+    </label>
+    <p id="setupMsg" class="muted small"></p>
+    <menu>
+      <button value="cancel" class="ghost" type="submit">닫기</button>
+      <button value="save" id="saveBtn" class="primary" type="submit">저장하고 연결</button>
+    </menu>
+  </form>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>

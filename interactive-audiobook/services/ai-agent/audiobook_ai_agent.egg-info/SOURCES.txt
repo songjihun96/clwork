@@ -1,0 +1,11 @@
+pyproject.toml
+agent/__init__.py
+agent/echo.py
+agent/main.py
+agent/settings.py
+audiobook_ai_agent.egg-info/PKG-INFO
+audiobook_ai_agent.egg-info/SOURCES.txt
+audiobook_ai_agent.egg-info/dependency_links.txt
+audiobook_ai_agent.egg-info/requires.txt
+audiobook_ai_agent.egg-info/top_level.txt
+tests/test_echo.py

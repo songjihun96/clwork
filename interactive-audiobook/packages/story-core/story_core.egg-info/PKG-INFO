@@ -1,0 +1,15 @@
+Metadata-Version: 2.4
+Name: story-core
+Version: 0.1.0
+Summary: Shared domain code for the audiobook platform: models, reading state machine, ingestion, storage, jobs
+Requires-Python: >=3.13
+Requires-Dist: sqlalchemy[asyncio]==2.0.53
+Requires-Dist: defusedxml==0.7.1
+Requires-Dist: taskiq==0.12.6
+Requires-Dist: taskiq-redis==1.2.3
+Provides-Extra: dev
+Requires-Dist: pytest==9.1.1; extra == "dev"
+Requires-Dist: pytest-asyncio==1.4.0; extra == "dev"
+Requires-Dist: aiosqlite==0.22.1; extra == "dev"
+Requires-Dist: hypothesis==6.168.0; extra == "dev"
+Requires-Dist: types-defusedxml==0.7.0.20260504; extra == "dev"
