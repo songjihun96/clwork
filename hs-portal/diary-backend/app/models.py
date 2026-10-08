@@ -66,9 +66,26 @@ class User(Base):
     teacher_udj_id = Column(Integer, nullable=True, index=True)  # 담당 교사(UDJ ID)
     class_name = Column(String(40), default="")
 
+    # 학년 자동 계산(개인 구매 학생). 학교 소속 학생은 코드·선생님이 학년을 정하므로
+    # 이 값이 비어 있다. 개인 학생은 "그 학년도에 몇 학년이었는지"를 한 번 적어 두고,
+    # 해마다 3월에 학년도가 바뀌면 거기서 계산한다(로그인할 때마다 +1 하지 않는다).
+    grade_base = Column(Integer, nullable=True)        # 기준 학년
+    grade_base_year = Column(Integer, nullable=True)   # 기준 학년도(3월 시작)
+    school_level = Column(String(10), default="high")  # high / middle
+
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login_at = Column(DateTime, nullable=True)
+    # 로그인 횟수(서비스 이용 횟수 통계용). 무엇을 했는지는 담지 않는다.
+    login_count = Column(Integer, default=0)
+
+    # 첫 달 무료. 기록해에 처음 들어온 학생에게 가입일부터 1개월(달력 기준)을 준다.
+    # end_at 은 **이 시각부터 무료가 아니다**(한국 날짜 자정). 비어 있으면 무료 대상이
+    # 아니다 — 정책이 생기기 전 가입자는 비어 있어 예전과 같다.
+    # 지금 상태(무료 중/종료/유료 전환)는 저장하지 않고 이 두 값과 결제 기록으로 계산한다
+    # (저장해 두면 날짜가 지나도 값이 안 바뀌어 어긋난다).
+    free_trial_start_at = Column(DateTime, nullable=True)
+    free_trial_end_at = Column(DateTime, nullable=True, index=True)
 
     def apply_profile(self, p: dict) -> None:
         """UDJ 가 준 프로필로 갱신한다.
@@ -83,22 +100,31 @@ class User(Base):
         self.email = (p.get("email") or "")[:120]
         self.name = (p.get("name") or "")[:60]
         self.role = Role(p.get("role") or "student")
-        self.school_id = p.get("school_id")
-        self.school_name = (p.get("school_name") or "")[:120]
+        # UDJ 는 재학생 인증 전인 학생의 학교를 모른다(빈 값). 그 학생이 선생님께 받은
+        # 이용권 코드로 기록해에서 학교가 정해졌다면, 빈 값으로 덮어쓰지 않는다 —
+        # 덮어쓰면 다음 로그인 때 학교가 사라져 받은 이용권을 못 쓴다.
+        if p.get("school_id") or not self.school_id:
+            self.school_id = p.get("school_id")
+            self.school_name = (p.get("school_name") or "")[:120]
         self.verified = bool(p.get("verified"))
         self.teacher_udj_id = p.get("teacher_udj_id")
         self.is_active = bool(p.get("is_active", True))
 
         if p.get("department"):
             self.department = p["department"][:60]
-        if p.get("grade") is not None:
+        # 학년을 스스로 관리하는(자동 계산) 개인 학생은 UDJ 값으로 덮지 않는다.
+        if p.get("grade") is not None and not self.grade_base_year:
             self.grade = p["grade"]
         if p.get("class_name"):
             self.class_name = p["class_name"][:40]
+        # 학교 계정의 학교급(중·고)은 UDJ 가 정한다. 학생의 school_level 은 개인 학생
+        # 학년 계산용이라 여기서 건드리지 않는다.
+        if self.role == Role.school and p.get("school_level") in ("high", "middle"):
+            self.school_level = p["school_level"]
 
 
 class JournalEntry(Base):
-    """학교생활 일기 · 수업 일지."""
+    """학교생활일지 · 수업일지."""
 
     __tablename__ = "journal_entries"
 
@@ -133,6 +159,29 @@ class JournalEntry(Base):
     user = relationship("User", foreign_keys=[user_id])
 
 
+class JournalResumeTag(Base):
+    """일지 하나에 학생이 달아 둔 "자기소개서 항목 카테고리".
+
+    일지 1 : 카테고리 N. 카테고리 키는 ai.RESUME_CATEGORY_KEYS(자소서 항목 키와
+    같다)라 따로 표를 두지 않는다. 자소서를 쓸 때 "이 항목에 쓸 만한 내 기록"
+    맨 위에 이 표에 걸린 일지를 먼저 올린다.
+    """
+
+    __tablename__ = "journal_resume_tags"
+    __table_args__ = (
+        UniqueConstraint("journal_id", "category", name="uq_journal_resume_tag"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    journal_id = Column(Integer, ForeignKey("journal_entries.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    # 주인이 누구인지 여기에도 둔다. 자소서 화면이 "내 일지 중 이 카테고리"를
+    # 찾을 때 일지 표를 거치지 않고 바로 거른다.
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    category = Column(String(40), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class CoverLetter(Base):
     """개인 자기소개서. 구독한 이용자만 만들 수 있다."""
 
@@ -142,6 +191,14 @@ class CoverLetter(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     title = Column(String(120), default="")
     content = Column(Text, default="{}")            # {항목키: 본문} JSON
+    # 희망 직업군(ai.JOB_CATEGORIES 의 키). 비어 있으면 고르지 않은 것.
+    job_category = Column(String(40), default="")
+    # 지원동기·입사 후 목표에서 AI 가 만든 질문과 학생의 답.
+    # {"apply_motive": {"questions": [...], "answers": {...}}, "future_goal": {...}}
+    question_answers = Column(Text, default="{}")
+    # 항목마다 학생이 "내 일지에서 직접 고르기"로 고른 기록. {항목키: [일지 id, ...]}
+    # AI 초안은 이 기록을 핵심 근거로 쓴다.
+    picked_records = Column(Text, default="{}")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -186,6 +243,8 @@ class SubscriptionOrder(Base):
     payment_key = Column(String(200), default="")
     pay_method = Column(String(30), default="")
     receipt_url = Column(String(300), default="")
+    # 토스 테스트 키(test_sk_)로 승인된 결제. 돈이 오가지 않았으므로 매출에서 뺀다(우리업무 정산).
+    is_test = Column(Boolean, default=False)
     refunded_at = Column(DateTime, nullable=True)
     # 실제로 돌려준 금액과 사유. 부분 환불이 있으므로 amount 와 별도로 남긴다.
     refund_amount = Column(Integer, default=0)
@@ -876,13 +935,64 @@ class PortfolioThemeRecommendation(Base):
 # 이름·학교가 노출될 이유가 없다).
 
 
+# ══════════════════════════════════════════════════════════
+# 기록해 공지사항 (UDJ 공지와 별개)
+# ══════════════════════════════════════════════════════════
+# 표 이름에 diary_ 를 붙인다. UDJ 와 같은 DB 를 쓰는 환경이 와도 UDJ 의
+# notices·notification_logs 표와 부딪치지 않게.
+
+class DiaryNotice(Base):
+    """기록해 공지. 기록해 관리자만 쓰고, 기록해 공지사항 화면에만 보인다.
+    원하면 기록해 학교 계정(중·고)의 '공지 알림 이메일'로 알린다."""
+
+    __tablename__ = "diary_notices"
+
+    id = Column(Integer, primary_key=True)
+    author_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    title = Column(String(150), nullable=False)
+    body = Column(Text, default="")
+    category = Column(String(12), nullable=False, default="notice")
+    is_important = Column(Boolean, nullable=False, default=False)
+    status = Column(String(10), nullable=False, default="draft", index=True)   # draft / published
+    published_at = Column(DateTime, nullable=True)
+    starts_at = Column(DateTime, nullable=True)
+    ends_at = Column(DateTime, nullable=True)
+    target_level = Column(String(10), nullable=False, default="all")          # all / high / middle
+    email_enabled = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class DiarySchoolNoticeSetting(Base):
+    """학교별 기록해 공지 알림 메일 설정. school_id 는 UDJ 학교 ID 다(학교 계정과 같은 값).
+    행이 없으면 '알림 받음 · 주소는 학교 계정 로그인 메일'로 본다."""
+
+    __tablename__ = "diary_school_notice_settings"
+
+    school_id = Column(Integer, primary_key=True)
+    notice_email = Column(String(120), default="")
+    enabled = Column(Boolean, nullable=False, default=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class DiaryNotificationLog(Base):
+    """기록해 공지 메일 발송 기록. 같은 공지·같은 학교는 한 줄(중복 발송 방지)."""
 
+    __tablename__ = "diary_notification_logs"
+    __table_args__ = (
+        UniqueConstraint("notice_id", "channel", "target_key", name="uq_diary_notification_target"),
+    )
 
-
-
-
-
+    id = Column(Integer, primary_key=True)
+    notice_id = Column(Integer, ForeignKey("diary_notices.id"), nullable=False, index=True)
+    channel = Column(String(8), nullable=False, default="email")
+    target_key = Column(String(40), nullable=False)          # school:12
+    school_id = Column(Integer, nullable=True, index=True)
+    school_name = Column(String(120), default="")
+    address = Column(String(120), default="")
+    status = Column(String(10), nullable=False, default="pending", index=True)
+    error = Column(String(300), default="")
+    attempts = Column(Integer, nullable=False, default=0)
+    sent_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -1,23 +1,34 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import MyClassBar from "../components/MyClassBar";
 
-const KIND_LABEL = { lesson: "수업 일지", diary: "학교생활 일기" };
+const KIND_LABEL = { lesson: "수업일지", diary: "학교생활일지" };
+// 주소의 ?type= 값. 새로고침해도 고른 탭이 남는다.
+export const TYPE_TABS = [["all", "전체보기"], ["class", "수업일지"], ["school", "학교생활일지"]];
+const TYPE_KEYS = TYPE_TABS.map(([k]) => k);
 
 export default function Journals() {
   const navigate = useNavigate();
   const [picking, setPicking] = useState(false);   // 무엇을 쓸지 고르는 창
   const [items, setItems] = useState(null);
   const [error, setError] = useState("");
-  const [filter, setFilter] = useState("all");
+  const [search, setSearch] = useSearchParams();
+  const type = TYPE_KEYS.includes(search.get("type")) ? search.get("type") : "all";
   const [subject, setSubject] = useState("all");
 
+  // 탭마다 서버에서 그 종류만 받아 온다(예전 글도 저장된 종류로 정확히 갈린다).
   useEffect(() => {
-    api.journals()
+    setItems(null);
+    api.journals(type)
       .then(setItems)
       .catch((e) => { setError(e.message); setItems([]); });
-  }, []);
+  }, [type]);
+
+  const pickType = (k) => {
+    setSubject("all");
+    setSearch(k === "all" ? {} : { type: k }, { replace: true });
+  };
 
   if (error) {
     return (
@@ -26,15 +37,11 @@ export default function Journals() {
       </div>
     );
   }
-  if (!items) {
-    return <div className="wrap page"><p>불러오는 중…</p></div>;
-  }
-
-  const byKind = filter === "all" ? items : items.filter((i) => i.kind === filter);
-  // 수업 일지를 볼 때만 과목별로 더 좁힐 수 있다 — 학교생활 일기는 과목이 없다.
-  const subjects = [...new Set(items.filter((i) => i.kind === "lesson" && i.subject)
+  const byKind = items || [];
+  // 수업일지를 볼 때만 과목별로 더 좁힐 수 있다 — 학교생활일지는 과목이 없다.
+  const subjects = [...new Set(byKind.filter((i) => i.kind === "lesson" && i.subject)
     .map((i) => i.subject))];
-  const shown = (filter === "lesson" && subject !== "all")
+  const shown = (type === "class" && subject !== "all")
     ? byKind.filter((i) => i.subject === subject) : byKind;
 
   return (
@@ -42,7 +49,7 @@ export default function Journals() {
       <div className="row" style={{ marginBottom: 6 }}>
         <div>
           <span className="label">내 기록</span>
-          <h1 style={{ marginTop: 4 }}>일지와 일기</h1>
+          <h1 style={{ marginTop: 4 }}>학교생활일지 · 수업일지</h1>
         </div>
         <div className="spacer" />
         <button className="btn btn-primary" onClick={() => setPicking(true)}>새로 쓰기</button>
@@ -54,18 +61,21 @@ export default function Journals() {
       <MyClassBar />
 
       <div className="row" style={{ margin: "18px 0 12px", flexWrap: "wrap" }}>
-        {[["all", "전체"], ["diary", "학교생활 일기"], ["lesson", "수업 일지"]].map(([k, label]) => (
+        {TYPE_TABS.map(([k, label]) => (
           <button
             key={k}
-            className={`btn btn-sm ${filter === k ? "" : "btn-ghost"}`}
-            onClick={() => { setFilter(k); setSubject("all"); }}
+            className={`btn btn-sm ${type === k ? "" : "btn-ghost"}`}
+            aria-pressed={type === k}
+            onClick={() => pickType(k)}
           >
             {label}
           </button>
         ))}
       </div>
 
-      {filter === "lesson" && subjects.length > 0 && (
+      {!items && <p className="meta">불러오는 중…</p>}
+
+      {type === "class" && subjects.length > 0 && (
         <div className="row" style={{ margin: "0 0 12px", flexWrap: "wrap", gap: 6 }}>
           <button className={`btn btn-sm ${subject === "all" ? "" : "btn-ghost"}`}
             onClick={() => setSubject("all")}>전체 과목</button>
@@ -78,9 +88,10 @@ export default function Journals() {
         </div>
       )}
 
-      {shown.length === 0 ? (
+      {!items ? null : shown.length === 0 ? (
         <div className="empty">
-          <h3>아직 기록이 없습니다</h3>
+          <h3>{type === "class" ? "아직 수업일지가 없습니다"
+            : type === "school" ? "아직 학교생활일지가 없습니다" : "아직 기록이 없습니다"}</h3>
           <p>오늘 있었던 일부터 한 줄 남겨보세요.</p>
           <button className="btn btn-primary" style={{ marginTop: 12 }}
             onClick={() => setPicking(true)}>
@@ -100,6 +111,7 @@ export default function Journals() {
               )}
             </div>
             <h4>{it.title || it.subject || it.entry_date}</h4>
+            {it.preview && <p className="entry-preview">{it.preview}</p>}
             <div className="meta">
               {it.entry_date}
               {it.subject && it.title ? ` · ${it.subject}` : ""}
@@ -128,8 +140,8 @@ function KindPicker({ onPick, onClose }) {
   }, [onClose]);
 
   const CHOICES = [
-    ["diary", "학교생활 일지", "오늘 학교에서 있었던 일, 활동, 느낀 점을 남깁니다."],
-    ["lesson", "학교수업 일지", "한 과목 수업에서 배운 것과 해본 것을 남깁니다."],
+    ["diary", "학교생활일지", "오늘 학교에서 있었던 일, 활동, 느낀 점을 남깁니다."],
+    ["lesson", "수업일지", "수업에서 어려웠던 것과 그것을 어떻게 풀었는지 남깁니다."],
   ];
 
   return (

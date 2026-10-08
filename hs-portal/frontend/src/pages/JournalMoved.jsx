@@ -1,5 +1,4 @@
 import { useEffect } from "react";
-import { Link } from "react-router-dom";
 import { useSeo } from "../seo";
 
 const DIARY_URL = "https://diary.ggm.kr";
@@ -42,8 +41,8 @@ export default function JournalMoved() {
       </a>
 
       <p style={{ fontSize: 13, color: "var(--steel-light)", marginTop: 20, lineHeight: 1.8 }}>
-        선생님 계정은 이곳 <Link to="/teacher">선생님 페이지</Link>에서
-        학생들이 제출한 일지를 그대로 확인하실 수 있습니다.
+        선생님은 기록해에서 같은 계정으로 로그인해
+        학생들이 제출한 일지를 확인하실 수 있습니다.
       </p>
     </div>
   );

@@ -1,9 +1,13 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import DiaryNoticeAdmin from "../components/DiaryNoticeAdmin";
 
 const TABS = [
   ["stats", "현황"],
   ["seats", "학교 이용권"],
+  ["personal", "개인 구매"],
+  ["trial", "첫 달 무료"],
+  ["notices", "공지사항"],
   ["unmatched", "미매칭 입금"],
   ["settings", "설정"],
   ["logs", "활동 기록"],
@@ -41,6 +45,9 @@ export default function Admin() {
 
       {tab === "stats" && <StatsTab />}
       {tab === "seats" && <SeatOrdersTab />}
+      {tab === "personal" && <PersonalOrdersTab />}
+      {tab === "trial" && <TrialTab />}
+      {tab === "notices" && <DiaryNoticeAdmin />}
       {tab === "unmatched" && <UnmatchedTab />}
       {tab === "settings" && <SettingsTab />}
       {tab === "logs" && <LogsTab />}
@@ -974,6 +981,281 @@ function SeatOrdersTab() {
                 {o.admin_note && ` · ${o.admin_note}`}
               </p>
             )}
+          </div>
+        ))}
+    </div>
+  );
+}
+
+/** 첫 달 무료 — 지표, 정책 설정, 학생별 무료 기간 관리.
+ *  지표는 이미 있는 데이터(가입일·무료 기간·결제·일지·자기소개서·AI 작업·로그인 횟수)만 센다. */
+function TrialTab() {
+  const [range, setRange] = useState({ start: "", end: "" });
+  const [stats, setStats] = useState(null);
+  const [rows, setRows] = useState(null);
+  const [status, setStatus] = useState("");
+  const [q, setQ] = useState("");
+  const [conf, setConf] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const [busy, setBusy] = useState(0);
+
+  const params = () => ({ start: range.start || undefined, end: range.end || undefined });
+  const loadStats = () => api.adminTrialStats(params()).then(setStats)
+    .catch((e) => setMsg({ type: "error", text: e.message }));
+  const loadRows = () => api.adminTrialUsers({ ...params(), status: status || undefined, q: q.trim() || undefined })
+    .then(setRows).catch((e) => setMsg({ type: "error", text: e.message }));
+
+  useEffect(() => {
+    api.adminSettings().then((s) => setConf({
+      enabled: s.free_trial_enabled || "on", months: s.free_trial_months || 1,
+    })).catch(() => {});
+  }, []);
+  useEffect(() => { loadStats(); }, [range.start, range.end]);
+  useEffect(() => { loadRows(); }, [range.start, range.end, status]);
+
+  const saveConf = async () => {
+    setMsg(null);
+    try {
+      await api.saveAdminSettings({ free_trial_enabled: conf.enabled, free_trial_months: Number(conf.months) });
+      setMsg({ type: "ok", text: "첫 달 무료 설정을 저장했습니다. 이후 새로 들어오는 학생부터 적용됩니다." });
+      loadStats();
+    } catch (e) { setMsg({ type: "error", text: e.message }); }
+  };
+
+  const edit = async (u, body, ok) => {
+    setBusy(u.id); setMsg(null);
+    try {
+      await api.adminEditTrial(u.id, body);
+      setMsg({ type: "ok", text: ok });
+      loadRows(); loadStats();
+    } catch (e) {
+      setMsg({ type: "error", text: e.message });
+    } finally { setBusy(0); }
+  };
+  const setDates = (u) => {
+    const start = prompt("무료 시작일 (YYYY-MM-DD)", (u.trial_start_at ? String(u.trial_start_at) : new Date().toISOString()).slice(0, 10));
+    if (!start) return;
+    const last = prompt("마지막 무료일 — 이날까지 무료 (YYYY-MM-DD)", u.last_day || start);
+    if (!last) return;
+    edit(u, { action: "set", start_date: start, last_day: last }, "무료 기간을 바꿨습니다.");
+  };
+
+  const pctText = (v) => (v === null || v === undefined ? "—" : `${v}%`);
+  const n = (v) => Number(v || 0).toLocaleString();
+
+  return (
+    <div className="panel">
+      <h3>첫 달 무료</h3>
+      <p style={{ fontSize: 13, color: "var(--steel)", margin: "0 0 12px", lineHeight: 1.7 }}>
+        기록해에 처음 들어온 학생은 가입일부터 {conf?.months || 1}개월(달력 기준) 동안 자기소개서까지 무료로 씁니다.
+        끝나기 7일 전부터 남은 날을 알리고, 끝나면 유료 이용을 안내합니다. 정책 전 가입자는 대상이 아닙니다.
+      </p>
+      {msg && <div className={`notice notice-${msg.type}`} style={{ marginBottom: 12 }}>{msg.text}</div>}
+
+      {conf && (
+        <div className="row trial-conf" style={{ gap: 10, marginBottom: 16 }}>
+          <label className="row" style={{ gap: 6 }}>
+            <input type="checkbox" checked={conf.enabled === "on"}
+              onChange={(e) => setConf({ ...conf, enabled: e.target.checked ? "on" : "off" })} />
+            신규 가입자에게 무료 기간 주기
+          </label>
+          <label className="row" style={{ gap: 6 }}>
+            기간
+            <select className="input" style={{ width: "auto" }} value={conf.months}
+              onChange={(e) => setConf({ ...conf, months: e.target.value })}>
+              {[1, 2, 3].map((m) => <option key={m} value={m}>{m}개월</option>)}
+            </select>
+          </label>
+          <button className="btn btn-sm" onClick={saveConf}>설정 저장</button>
+        </div>
+      )}
+
+      <div className="row" style={{ gap: 6, marginBottom: 12 }}>
+        <span className="meta">가입(무료 시작)일</span>
+        <input className="input" type="date" style={{ width: "auto" }} value={range.start}
+          onChange={(e) => setRange({ ...range, start: e.target.value })} />
+        <span className="meta">~</span>
+        <input className="input" type="date" style={{ width: "auto" }} value={range.end}
+          onChange={(e) => setRange({ ...range, end: e.target.value })} />
+        {(range.start || range.end) && (
+          <button className="btn btn-sm btn-ghost" onClick={() => setRange({ start: "", end: "" })}>전체 기간</button>
+        )}
+      </div>
+
+      {!stats ? <p className="meta">불러오는 중…</p> : (
+        <>
+          <div className="trial-stats">
+            {[
+              ["신규 가입 학생", n(stats.new_signups)],
+              ["무료 이용자", n(stats.trial_users)],
+              ["무료 이용 중", n(stats.trial_active)],
+              ["무료 기간 활성 이용자", n(stats.trial_active_users), "무료 기간에 일지를 1개 이상 쓴 학생"],
+              ["무료 종료", n(stats.trial_ended)],
+              ["유료 전환", n(stats.converted)],
+              ["유료 전환율", pctText(stats.conversion_rate), "유료 전환 ÷ 무료 이용자"],
+              ["종료자 전환율", pctText(stats.conversion_rate_ended), "무료가 끝난 학생 중 전환한 비율"],
+            ].map(([label, value, hint]) => (
+              <div className="trial-stat" key={label} title={hint || undefined}>
+                <span className="meta">{label}</span><b>{value}</b>
+              </div>
+            ))}
+          </div>
+          <p className="meta" style={{ margin: "8px 0 16px", lineHeight: 1.7 }}>
+            무료 기간 이용: 로그인 {n(stats.usage.logins)}회 · 일지 {n(stats.usage.journals)}개 ·
+            자기소개서 {n(stats.usage.cover_letters)}개 · AI 작업 {n(stats.usage.ai_jobs)}건
+          </p>
+        </>
+      )}
+
+      <div className="row" style={{ gap: 6, marginBottom: 10 }}>
+        {[["", "전체"], ["trial", "무료 이용 중"], ["trial_ended", "무료 종료"], ["paid", "유료 전환"], ["school", "학교 이용권"]]
+          .map(([k, label]) => (
+            <button key={k} className={`btn btn-sm ${status === k ? "" : "btn-ghost"}`}
+              onClick={() => setStatus(k)}>{label}</button>
+          ))}
+        <div className="spacer" />
+        <input className="input" style={{ width: 200 }} placeholder="이름·이메일로 찾기" value={q}
+          onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && loadRows()} />
+        <button className="btn btn-sm" onClick={loadRows}>찾기</button>
+      </div>
+
+      {!rows ? <p className="meta">불러오는 중…</p>
+        : rows.length === 0 ? <p className="meta">해당하는 학생이 없습니다.</p>
+        : rows.map((u) => (
+          <div key={u.id} style={{ padding: "10px 0", borderTop: "1px solid var(--line)" }}>
+            <div className="row" style={{ gap: 8, alignItems: "baseline" }}>
+              <b>{u.name || "(이름 없음)"}</b>
+              <span className="meta">{u.email}</span>
+              <span className={`badge ${u.status === "paid" ? "badge-done" : ""}`}>{u.status_label}</span>
+              <div className="spacer" />
+              <span className="meta">가입 {String(u.created_at).slice(0, 10)}</span>
+            </div>
+            <div className="meta" style={{ marginTop: 4, lineHeight: 1.7 }}>
+              {u.trial_start_at
+                ? `무료 ${String(u.trial_start_at).slice(0, 10)} ~ ${u.last_day}${u.days_left != null ? ` · ${u.days_left}일 남음` : ""}`
+                : "무료 대상 아님"}
+              {u.converted_at && ` · 유료 전환 ${String(u.converted_at).slice(0, 10)}`}
+              {` · 로그인 ${u.login_count}회 · 일지 ${u.journals}개 · 자기소개서 ${u.cover_letters}개`}
+            </div>
+            <div className="row" style={{ gap: 6, marginTop: 6 }}>
+              <button className="btn btn-sm btn-ghost" disabled={busy === u.id}
+                onClick={() => confirm(`${u.name || u.email} 학생에게 오늘부터 무료 기간을 새로 줄까요?`)
+                  && edit(u, { action: "start" }, "오늘부터 무료 기간을 시작했습니다.")}>오늘부터 새로 시작</button>
+              <button className="btn btn-sm btn-ghost" disabled={busy === u.id} onClick={() => setDates(u)}>기간 지정</button>
+              {u.status === "trial" && (
+                <button className="btn btn-sm btn-ghost" disabled={busy === u.id}
+                  onClick={() => confirm("무료 기간을 지금 끝낼까요?") && edit(u, { action: "end" }, "무료 기간을 끝냈습니다.")}>지금 종료</button>
+              )}
+              {u.trial_start_at && (
+                <button className="btn btn-sm btn-ghost" disabled={busy === u.id}
+                  onClick={() => confirm("이 학생을 무료 대상에서 뺄까요? (기록이 지워집니다)")
+                    && edit(u, { action: "clear" }, "무료 대상에서 뺐습니다.")}>대상에서 빼기</button>
+              )}
+            </div>
+          </div>
+        ))}
+    </div>
+  );
+}
+
+/** 개인 구매 주문.
+ *  카드 결제는 결제와 동시에 이용권이 붙어 여기서 할 일이 없다(환불만).
+ *  계좌 입금은 통장을 보고 입금을 확인한 뒤 [입금 확인·승인]을 눌러야 열린다. */
+function PersonalOrdersTab() {
+  const [rows, setRows] = useState(null);
+  const [status, setStatus] = useState("pending");
+  const [msg, setMsg] = useState(null);
+  const [busy, setBusy] = useState(0);
+
+  const load = () => api.adminPersonalOrders(status).then(setRows)
+    .catch((e) => setMsg({ type: "error", text: e.message }));
+  useEffect(() => { load(); }, [status]);
+
+  const act = async (o, fn, ok) => {
+    setBusy(o.id); setMsg(null);
+    try {
+      const r = await fn();
+      setMsg({ type: "ok", text: r?.message || ok });
+      load();
+    } catch (e) {
+      setMsg({ type: "error", text: e.message });
+    } finally {
+      setBusy(0);
+    }
+  };
+
+  const approve = (o) => {
+    if (!confirm(`${o.user_name || o.user_email} · ${o.months}개월 · ${o.amount.toLocaleString()}원\n입금을 확인했고 이용권을 열까요?`)) return;
+    act(o, () => api.approvePersonalOrder(o.id), "승인했습니다.");
+  };
+  const reject = (o) => {
+    const note = prompt("반려 사유를 적어주세요.", "입금 확인 안 됨");
+    if (note === null) return;
+    act(o, () => api.rejectPersonalOrder(o.id, note), "반려했습니다.");
+  };
+  const refund = (o) => {
+    const amount = prompt(`환불 금액(원). 전액은 ${o.amount}`, String(o.amount));
+    if (amount === null) return;
+    const reason = prompt("환불 사유", "고객 요청");
+    if (reason === null) return;
+    if (!confirm(o.method === "card"
+      ? "카드 결제를 취소하고 이용권 기간을 줄입니다. 진행할까요?"
+      : "계좌 입금 건입니다. 송금은 직접 하셔야 합니다. 환불 기록을 남기고 이용권 기간을 줄일까요?")) return;
+    act(o, () => api.refundPersonalOrder(o.id, Number(amount), reason), "환불을 기록했습니다.");
+  };
+
+  return (
+    <div className="panel">
+      <h3>개인 구매</h3>
+      <p style={{ fontSize: 13, color: "var(--steel)", margin: "0 0 12px", lineHeight: 1.7 }}>
+        학생이 직접 산 자기소개서 이용권입니다. <b>카드</b>는 결제와 동시에 열리고,
+        <b> 계좌 입금</b>은 입금을 확인한 뒤 승인해야 열립니다. 학교·선생님 승인은 필요 없습니다.
+      </p>
+      <div className="row" style={{ gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+        {[["pending", "결제 대기"], ["approved", "결제 완료"], ["rejected", "취소·실패"],
+          ["refunded", "환불"], ["", "전체"]].map(([k, label]) => (
+          <button key={k} className={`btn btn-sm ${status === k ? "" : "btn-ghost"}`}
+            onClick={() => setStatus(k)}>{label}</button>
+        ))}
+      </div>
+      {msg && <div className={`notice notice-${msg.type}`}>{msg.text}</div>}
+      {!rows ? <p className="meta">불러오는 중…</p>
+        : rows.length === 0 ? <p className="meta">해당하는 주문이 없습니다.</p>
+        : rows.map((o) => (
+          <div key={o.id} style={{ padding: "12px 0", borderTop: "1px solid var(--line)" }}>
+            <div className="row" style={{ gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+              <b>{o.user_name || "(이름 없음)"}</b>
+              <span className="meta">{o.user_email}</span>
+              <span className="badge">{o.status_label}</span>
+              <div className="spacer" />
+              <span className="meta">{String(o.created_at).slice(0, 10)}</span>
+            </div>
+            <div className="meta" style={{ marginTop: 4, lineHeight: 1.7 }}>
+              {o.months}개월 · {o.amount.toLocaleString()}원 · {o.method === "card" ? "카드" : "계좌 입금"}
+              {o.deposit_code && ` · 입금코드 ${o.deposit_code}`}
+              {o.depositor_name && ` · 입금자 ${o.depositor_name}`}
+              <span style={{ display: "block" }}>보호자 연락처 {o.guardian_contact || "-"}</span>
+              {o.note && <span style={{ display: "block" }}>메모: {o.note}</span>}
+              {o.refunded_at && (
+                <span style={{ display: "block" }}>
+                  환불 {Number(o.refund_amount).toLocaleString()}원 · {String(o.refunded_at).slice(0, 10)}
+                </span>
+              )}
+            </div>
+            <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+              {o.status === "pending" && o.method === "bank" && (
+                <button className="btn btn-sm btn-primary" disabled={busy === o.id}
+                  onClick={() => approve(o)}>입금 확인·승인</button>
+              )}
+              {o.status === "pending" && (
+                <button className="btn btn-sm btn-ghost" disabled={busy === o.id}
+                  onClick={() => reject(o)}>반려</button>
+              )}
+              {o.status === "approved" && (
+                <button className="btn btn-sm btn-ghost" disabled={busy === o.id}
+                  onClick={() => refund(o)}>환불</button>
+              )}
+            </div>
           </div>
         ))}
     </div>

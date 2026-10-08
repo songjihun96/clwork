@@ -15,6 +15,11 @@
 둘을 각각 반올림하면 합이 순매출과 1원 어긋날 수 있다. 인센티브는 내림이다 —
 지급액을 부풀리는 쪽으로 반올림하지 않는다.
 
+**결제 유형(2026-09-27).** 매출 줄마다 개인·학교·우등직·영상·기타 중 하나를
+붙인다. 어느 결제 기록이 어느 유형인지는 DEFAULT_PTYPE 이 정하고, 관리자가
+정산 규칙에서 바꿀 수 있다(ptype_map). 토스 **테스트 키로 승인된 결제**
+(is_test)는 돈이 오가지 않았으므로 매출에서 빼고 따로 센다.
+
 **매출 원본은 두 사이트의 결제 기록이다.** 이 서비스는 그 DB 를 **읽기만** 한다.
 표 구조를 import 하지 않고 SQL 로 필요한 칸만 읽는 건, 이 프로세스가 두 백엔드와
 분리돼 있어서다. 대신 칸 이름이 바뀌면 여기도 고쳐야 한다(아래 SOURCES).
@@ -30,7 +35,7 @@ from typing import Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import create_engine, text
+from sqlalchemy import and_, create_engine, inspect, or_, text
 from sqlalchemy.orm import Session
 
 from .database import engine as work_engine, get_db
@@ -42,7 +47,27 @@ router = APIRouter(prefix="/api/work", tags=["settlement"])
 
 KST = timedelta(hours=9)
 
+# 결제 유형. 키는 DB·주소에 그대로 들어가므로 함부로 바꾸지 않는다.
+PAYMENT_TYPES = {
+    "personal": "개인 결제",
+    "school": "학교 결제",
+    "udj": "우등직 결제",
+    "video": "영상 결제",
+    "other": "기타 결제",
+}
+
+# 결제 기록(출처)마다 기본 결제 유형. 관리자가 정산 규칙에서 바꿀 수 있다.
+DEFAULT_PTYPE = {
+    "udj_plan": "udj",        # 우리동네 직업계고 학교 노출 플랜
+    "udj_sub": "udj",         # 우리동네 직업계고 구독
+    "udj_app": "udj",         # 컨설팅·상담 등 유료 신청
+    "udj_video": "video",     # 합격생 영상
+    "diary_sub": "personal",  # 기록해 개인 이용권
+    "diary_seat": "school",   # 기록해 학교 이용권(좌석)
+}
+
 DEFAULTS = {
+    "ptype_map": "",               # {출처: 결제 유형} JSON. 비면 DEFAULT_PTYPE
     "partner_org_id": "",          # 60% 를 받는 협력사
     "partner_pct": "60",           # 협력사 몫(%)
     "incentive_pct": "1",          # 우리 몫의 몇 % 를 직원 1인에게
@@ -92,7 +117,9 @@ SITE_NAME = {"udj": "우리동네 직업계고", "diary": "기록해"}
 
 # (출처 키, DB, 설명, 매출 SQL, 환불 SQL 또는 None)
 #   매출: 금액·기준시각(UTC)·참고. 환불: 금액·환불시각(UTC)·참고.
-#   :a ~ :b 는 그 달의 UTC 구간.
+#   :a ~ :b 는 조회 구간(UTC).
+#   {TEST} 는 테스트 결제 표시 칸(is_test)을 읽는 자리다. 그 칸이 아직 없는
+#   DB(백엔드가 새 칸을 만들기 전)면 비워서 예전처럼 읽는다 — TEST_TABLES 참고.
 #   status 는 DB 마다 enum/문자열이 달라 문자열로 바꿔 비교한다.
 SOURCES: List[Tuple[str, str, str, str, Optional[str]]] = [
     # 결제 금액은 한 번에 들어온다. 12개월 플랜이면 결제한 달에 12개월치 전액이 잡힌다.
@@ -105,22 +132,28 @@ SOURCES: List[Tuple[str, str, str, str, Optional[str]]] = [
           AND CAST(p.status AS TEXT) IN ('paid', 'approved')""",
      None),
     ("udj_sub", "udj", "구독",
-     """SELECT id, amount, paid_at AS at, 'order #' || id AS ref, months FROM subscription_orders
+     """SELECT id, amount, paid_at AS at, 'order #' || id AS ref, months{TEST} FROM subscription_orders
         WHERE paid_at >= :a AND paid_at < :b""",
-     """SELECT id, amount, refunded_at AS at, 'order #' || id AS ref FROM subscription_orders
+     """SELECT id, amount, refunded_at AS at, 'order #' || id AS ref{TEST} FROM subscription_orders
         WHERE refunded_at >= :a AND refunded_at < :b AND paid_at IS NOT NULL"""),
     # 유료 신청에는 입금 확인 시각 칸이 없어 신청일로 달을 정한다(명세에 표시).
     ("udj_app", "udj", "유료 신청(신청일 기준)",
      """SELECT id, amount, created_at AS at, kind || ' #' || id AS ref FROM service_applications
         WHERE created_at >= :a AND created_at < :b AND amount > 0
-          AND status IN ('paid', 'done')""",
+          AND status IN ('paid', 'done') AND kind <> 'graduate_video'""",
      None),
-    ("diary_sub", "diary", "구독",
-     """SELECT id, amount, paid_at AS at, 'order #' || id AS ref, months FROM subscription_orders
+    # 합격생 영상. 유료 신청과 같은 표지만 결제 유형(영상 결제)이 달라 따로 읽는다.
+    ("udj_video", "udj", "합격생 영상(신청일 기준)",
+     """SELECT id, amount, created_at AS at, kind || ' #' || id AS ref FROM service_applications
+        WHERE created_at >= :a AND created_at < :b AND amount > 0
+          AND status IN ('paid', 'done') AND kind = 'graduate_video'""",
+     None),
+    ("diary_sub", "diary", "개인 이용권",
+     """SELECT id, amount, paid_at AS at, 'order #' || id AS ref, months{TEST} FROM subscription_orders
         WHERE paid_at >= :a AND paid_at < :b""",
      # 송금을 마친 시점이 있어야 환불이 끝난 것이다. 부분 환불이 있어 환불액을 쓴다.
      """SELECT id, CASE WHEN COALESCE(refund_amount, 0) > 0 THEN refund_amount ELSE amount END AS amount,
-               refund_paid_at AS at, 'order #' || id AS ref FROM subscription_orders
+               refund_paid_at AS at, 'order #' || id AS ref{TEST} FROM subscription_orders
         WHERE refund_paid_at >= :a AND refund_paid_at < :b AND paid_at IS NOT NULL"""),
     ("diary_seat", "diary", "학교 좌석",
      """SELECT id, amount, paid_at AS at, school_name || ' #' || id AS ref, months,
@@ -129,6 +162,43 @@ SOURCES: List[Tuple[str, str, str, str, Optional[str]]] = [
           AND CAST(status AS TEXT) IN ('paid', 'approved')""",
      None),
 ]
+
+
+# {TEST} 를 쓰는 출처가 읽는 표.
+TEST_TABLES = {"udj_sub": "subscription_orders", "diary_sub": "subscription_orders"}
+_HAS_TEST_COL: Dict[str, bool] = {}
+
+
+def _test_col(db_key: str, table: str) -> str:
+    """is_test 칸이 있으면 읽는 SQL 조각, 없으면 빈 문자열. 있을 때만 기억해 둔다
+    (백엔드가 칸을 만든 뒤에는 다시 묻지 않게)."""
+    if _HAS_TEST_COL.get(db_key + table):
+        return ", is_test AS is_test"
+    eng = _ENGINES.get(db_key)
+    if eng is None:
+        return ""
+    try:
+        cols = {c["name"] for c in inspect(eng).get_columns(table)}
+    except Exception:
+        return ""
+    if "is_test" in cols:
+        _HAS_TEST_COL[db_key + table] = True
+        return ", is_test AS is_test"
+    return ""
+
+
+def ptype_map(db: Session) -> Dict[str, str]:
+    """출처 → 결제 유형. 관리자가 바꾼 것이 있으면 그것을 쓴다."""
+    out = dict(DEFAULT_PTYPE)
+    raw = get_settings(db).get("ptype_map") or ""
+    try:
+        saved = json.loads(raw) if raw else {}
+    except ValueError:
+        saved = {}
+    for k, v in (saved or {}).items():
+        if k in out and v in PAYMENT_TYPES:
+            out[k] = v
+    return out
 
 
 def month_bounds(month: str) -> Tuple[datetime, datetime]:
@@ -142,10 +212,13 @@ def month_bounds(month: str) -> Tuple[datetime, datetime]:
     return start - KST, end - KST
 
 
-def _read_source(db_key: str, sql: str, a: datetime, b: datetime) -> List[dict]:
+def _read_source(db_key: str, sql: str, a: datetime, b: datetime,
+                 source_key: str = "") -> List[dict]:
     eng = _ENGINES.get(db_key)
     if eng is None:
         raise LookupError("not-configured")
+    if "{TEST}" in sql:
+        sql = sql.replace("{TEST}", _test_col(db_key, TEST_TABLES.get(source_key, "")))
     with eng.connect() as conn:
         rows = conn.execute(text(sql), {"a": a, "b": b}).mappings().all()
     out = []
@@ -157,7 +230,8 @@ def _read_source(db_key: str, sql: str, a: datetime, b: datetime) -> List[dict]:
         out.append({"amount": int(r["amount"] or 0),
                     "day": (at + KST).date().isoformat() if at else None,
                     "ref": str(r["ref"]),
-                    "detail": _detail(r, keys)})
+                    "detail": _detail(r, keys),
+                    "is_test": bool(r["is_test"]) if "is_test" in keys else False})
     return out
 
 
@@ -180,23 +254,39 @@ def _detail(r, keys) -> str:
 
 
 def collect_lines(db: Session, month: str) -> Tuple[List[dict], List[str]]:
-    """그 달의 명세 줄 전부. (줄들, 경고들)"""
+    """그 달의 명세 줄 전부. (줄들, 경고들). 테스트 결제는 빠진다."""
     a, b = month_bounds(month)
+    lines, warnings, _tests = collect_range(
+        db, a, b, lambda q: q.filter(WorkLedgerEntry.month == month))
+    return lines, warnings
+
+
+def collect_range(db: Session, a: datetime, b: datetime, manual_filter
+                  ) -> Tuple[List[dict], List[str], List[dict]]:
+    """UTC 구간 [a, b) 의 명세 줄. (실제 줄들, 경고들, 테스트 결제 줄들)
+
+    manual_filter 는 직접 입력한 줄을 고르는 함수다 — 직접 입력은 달 단위로
+    적으므로 달 화면과 기간 화면이 고르는 법이 다르다."""
     lines: List[dict] = []
+    tests: List[dict] = []
     warnings: List[str] = []
     missing_db = set()
+    pmap = ptype_map(db)
 
     for key, db_key, label, sale_sql, refund_sql in SOURCES:
         for kind, sql in (("sale", sale_sql), ("refund", refund_sql)):
             if not sql:
                 continue
             try:
-                for r in _read_source(db_key, sql, a, b):
+                for r in _read_source(db_key, sql, a, b, key):
                     if r["amount"] <= 0:
                         continue
-                    lines.append({"source": "auto", "kind": kind, "site": SITE_NAME[db_key],
-                                  "label": label + (f" · {r['detail']}" if r["detail"] else ""),
-                                  "amount": r["amount"], "day": r["day"], "ref": r["ref"]})
+                    line = {"source": "auto", "source_key": key, "kind": kind,
+                            "site": SITE_NAME[db_key],
+                            "payment_type": pmap.get(key, "other"),
+                            "label": label + (f" · {r['detail']}" if r["detail"] else ""),
+                            "amount": r["amount"], "day": r["day"], "ref": r["ref"]}
+                    (tests if r["is_test"] else lines).append(line)
             except LookupError:
                 missing_db.add(db_key)
             except Exception as e:
@@ -206,14 +296,37 @@ def collect_lines(db: Session, month: str) -> Tuple[List[dict], List[str]]:
     for db_key in sorted(missing_db):
         warnings.append(f"{SITE_NAME[db_key]} 결제 기록을 읽을 DB 주소가 설정되지 않아 자동 매출에서 빠졌습니다.")
 
-    for e in (db.query(WorkLedgerEntry).filter(WorkLedgerEntry.month == month)
-              .order_by(WorkLedgerEntry.id).all()):
+    for e in manual_filter(db.query(WorkLedgerEntry)).order_by(WorkLedgerEntry.id).all():
+        pt = e.payment_type if e.payment_type in PAYMENT_TYPES else "other"
         lines.append({"source": "manual", "id": e.id, "kind": e.kind, "site": e.site,
+                      "payment_type": pt,
                       "label": "직접 입력", "amount": e.amount,
                       "day": e.day.isoformat() if e.day else None, "ref": e.memo})
 
     lines.sort(key=lambda x: (x["day"] or "", x["kind"], x["site"]))
-    return lines, warnings
+    tests.sort(key=lambda x: (x["day"] or "", x["kind"]))
+    return lines, warnings, tests
+
+
+def by_payment_type(lines: List[dict]) -> List[dict]:
+    """결제 유형별 건수·매출·환불·순매출·비율. 다섯 유형을 늘 같은 순서로 낸다
+    (0원인 유형도 빠지지 않아야 표가 달마다 모양이 같다). 비율은 매출 기준."""
+    rows = {k: {"key": k, "label": v, "count": 0, "sales": 0, "refunds": 0}
+            for k, v in PAYMENT_TYPES.items()}
+    for x in lines:
+        row = rows[x.get("payment_type") if x.get("payment_type") in rows else "other"]
+        if x["kind"] == "sale":
+            row["count"] += 1
+            row["sales"] += x["amount"]
+        else:
+            row["refunds"] += x["amount"]
+    total_sales = sum(r["sales"] for r in rows.values())
+    out = []
+    for r in rows.values():
+        r["net"] = r["sales"] - r["refunds"]
+        r["ratio"] = round(r["sales"] * 100 / total_sales, 1) if total_sales else 0.0
+        out.append(r)
+    return out
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -271,6 +384,7 @@ def compute(db: Session, month: str) -> dict:
         "our_remaining": ours - inc_total,
         "incentives": incentives,
         "by_site": by_site,
+        "by_type": by_payment_type(lines),
         "lines": lines,
         "warnings": warnings,
         "negative_net": net < 0,
@@ -289,6 +403,9 @@ def month_view(db: Session, month: str) -> dict:
         data["locked"] = True
         data["locked_at"] = (locked.locked_at + KST).strftime("%Y-%m-%d %H:%M")
         data["paid"] = json.loads(locked.paid or "{}")
+        if "by_type" not in data:
+            # 결제 유형이 생기기 전에 마감한 달. 저장된 줄로 다시 세면 유형 없는 줄은 기타로 간다.
+            data["by_type"] = by_payment_type(data.get("lines", []))
         return data
     data = compute(db, month)
     data["locked"] = False
@@ -309,12 +426,12 @@ def _partner_can_see(db: Session, user: WorkUser) -> bool:
 def _for_partner(d: dict) -> dict:
     """협력사에게는 자기 몫까지만. 직원 인센티브와 우리 쪽 잔액은 내부 정보다.
     명세 줄의 참고(주문 번호·학교명)도 뺀다 — 고객 정보다."""
-    keep = ("month", "sales", "refunds", "net", "partner_share", "by_site",
+    keep = ("month", "sales", "refunds", "net", "partner_share", "by_site", "by_type",
             "locked", "locked_at", "negative_net", "warnings")
     out = {k: d.get(k) for k in keep}
     out["rules"] = {"partner_pct": d["rules"]["partner_pct"],
                     "partner_org_name": d["rules"]["partner_org_name"]}
-    out["lines"] = [{k: x[k] for k in ("kind", "site", "label", "amount", "day")}
+    out["lines"] = [{k: x.get(k) for k in ("kind", "site", "label", "amount", "day", "payment_type")}
                     for x in d["lines"]]
     out["partner_paid"] = bool((d.get("paid") or {}).get("partner"))
     return out
@@ -328,12 +445,14 @@ class EntryIn(BaseModel):
     month: str
     kind: str = "sale"
     site: str = "기타"
+    payment_type: str = "other"
     amount: int = Field(gt=0, le=10_000_000_000)
     memo: str = Field(default="", max_length=200)
     day: Optional[date] = None
 
 
 class SettingsIn(BaseModel):
+    ptype_map: Optional[Dict[str, str]] = None
     partner_org_id: Optional[str] = None
     partner_pct: Optional[float] = Field(default=None, ge=0, le=100)
     incentive_pct: Optional[float] = Field(default=None, ge=0, le=100)
@@ -388,9 +507,12 @@ def add_entry(body: EntryIn, user: WorkUser = Depends(admin_only),
     month_bounds(body.month)
     if body.kind not in ("sale", "refund"):
         raise HTTPException(status_code=400, detail="매출 또는 환불만 적을 수 있습니다.")
+    if body.payment_type not in PAYMENT_TYPES:
+        raise HTTPException(status_code=400, detail="알 수 없는 결제 유형입니다.")
     if db.query(WorkSettlement).filter(WorkSettlement.month == body.month).first():
         raise HTTPException(status_code=400, detail="마감한 달입니다. 마감을 풀고 적어 주세요.")
     e = WorkLedgerEntry(month=body.month, kind=body.kind, site=body.site.strip() or "기타",
+                        payment_type=body.payment_type,
                         amount=body.amount, memo=body.memo.strip(), day=body.day,
                         created_by=user.id)
     db.add(e)
@@ -470,6 +592,11 @@ def mark_paid(month: str, body: PaidIn, user: WorkUser = Depends(admin_only),
 def read_settings(user: WorkUser = Depends(admin_only), db: Session = Depends(get_db)):
     s = get_settings(db)
     s["diary_connected"] = _ENGINES["diary"] is not None
+    s["ptype_map"] = ptype_map(db)
+    s["payment_types"] = [{"key": k, "label": v} for k, v in PAYMENT_TYPES.items()]
+    s["sources"] = [{"key": k, "site": SITE_NAME[dbk], "label": label,
+                     "default": DEFAULT_PTYPE.get(k, "other")}
+                    for k, dbk, label, _s, _r in SOURCES]
     return s
 
 
@@ -477,6 +604,13 @@ def read_settings(user: WorkUser = Depends(admin_only), db: Session = Depends(ge
 def write_settings(body: SettingsIn, user: WorkUser = Depends(admin_only),
                    db: Session = Depends(get_db)):
     changes = {k: v for k, v in body.model_dump().items() if v is not None}
+    if "ptype_map" in changes:
+        m = changes["ptype_map"]
+        bad = [k for k, v in m.items() if k not in DEFAULT_PTYPE or v not in PAYMENT_TYPES]
+        if bad:
+            raise HTTPException(status_code=400, detail="알 수 없는 출처나 결제 유형입니다: " + ", ".join(bad))
+        # 기본값과 같은 것은 저장하지 않는다 — 나중에 기본값을 고치면 따라가게.
+        changes["ptype_map"] = json.dumps({k: v for k, v in m.items() if DEFAULT_PTYPE[k] != v})
     if "partner_org_id" in changes and changes["partner_org_id"]:
         if db.get(WorkOrg, int(changes["partner_org_id"])) is None:
             raise HTTPException(status_code=400, detail="없는 협력사입니다.")
@@ -488,6 +622,97 @@ def write_settings(body: SettingsIn, user: WorkUser = Depends(admin_only),
             row.value = str(v)
     db.commit()
     return read_settings(user, db)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 매출 통계 — 기간·결제 유형별
+# ─────────────────────────────────────────────────────────────────────────────
+
+MAX_RANGE_DAYS = 400
+
+
+def _day(s: str, name: str) -> date:
+    try:
+        return date.fromisoformat(s)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail=f"{name}은(는) 2026-09-01 형식으로 넣어 주세요.")
+
+
+@router.get("/sales")
+def sales(start: str = "", end: str = "", payment_type: str = "",
+          user: WorkUser = Depends(current_user), db: Session = Depends(get_db)):
+    """기간(한국 날짜, 양끝 포함)·결제 유형별 매출.
+
+    **정산(달 화면)과 같은 결제 기록·같은 규칙**으로 센다. 다만 이 화면은
+    늘 지금의 결제 기록을 다시 읽는다 — 마감한 달의 고정된 숫자와는 그사이
+    바뀐 환불 등만큼 다를 수 있다(화면에 적는다).
+
+    합계는 걸러 낸 줄에서 다시 더하지 않고 유형별 합을 더해 만든다 —
+    전체와 유형별 합이 어긋날 길을 없앤다.
+
+    **협력사는 지정된 홈페이지의 매출만 본다.** 지정은 방문 통계와 같은 것
+    (WorkOrg.visit_sites, 관리자 → 계정 → 기업별 '볼 수 있는 사이트')을 쓴다.
+    주문 번호·학교명 같은 참고와 직접 입력 줄의 메모는 고객 정보라 빼고,
+    테스트 결제 건수도 관리자에게만 보여 준다."""
+    sites = None                     # None = 전부(관리자)
+    if user.role != "admin":
+        from .visits import allowed_sites
+        sites = [s[0] for s in allowed_sites(db, user)] if user.role == "partner" else []
+        if not sites:
+            raise HTTPException(status_code=403, detail="매출을 볼 권한이 없습니다.")
+    today = (datetime.utcnow() + KST).date()
+    d1 = _day(start, "시작일") if start else today.replace(day=1)
+    d2 = _day(end, "종료일") if end else today
+    if d2 < d1:
+        raise HTTPException(status_code=400, detail="종료일이 시작일보다 앞섭니다.")
+    if (d2 - d1).days > MAX_RANGE_DAYS:
+        raise HTTPException(status_code=400, detail=f"한 번에 {MAX_RANGE_DAYS}일까지 볼 수 있습니다.")
+    if payment_type and payment_type not in PAYMENT_TYPES:
+        raise HTTPException(status_code=400, detail="알 수 없는 결제 유형입니다.")
+
+    a = datetime(d1.year, d1.month, d1.day) - KST
+    b = datetime(d2.year, d2.month, d2.day) + timedelta(days=1) - KST
+
+    # 직접 입력은 날짜가 있으면 그 날로, 날짜가 없으면 그 달 1일로 본다.
+    months_in = []
+    y, m = d1.year, d1.month
+    while (y, m) <= (d2.year, d2.month):
+        if d1 <= date(y, m, 1) <= d2:
+            months_in.append(f"{y:04d}-{m:02d}")
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+
+    def manual(q):
+        return q.filter(or_(and_(WorkLedgerEntry.day >= d1, WorkLedgerEntry.day <= d2),
+                            and_(WorkLedgerEntry.day.is_(None), WorkLedgerEntry.month.in_(months_in))))
+
+    lines, warnings, tests = collect_range(db, a, b, manual)
+    if sites is not None:
+        lines = [x for x in lines if x["site"] in sites]
+        tests = []
+        warnings = [w for w in warnings if any(w.startswith(s) for s in sites)]
+
+    types = by_payment_type(lines)
+    total = {k: sum(t[k] for t in types) for k in ("count", "sales", "refunds", "net")}
+    shown = [x for x in lines if not payment_type or x["payment_type"] == payment_type]
+    shown.sort(key=lambda x: (x["day"] or "", x["kind"]), reverse=True)
+    if user.role != "admin":
+        shown = [{k: x.get(k) for k in ("kind", "site", "label", "amount", "day", "payment_type")}
+                 for x in shown]
+    return {
+        "start": d1.isoformat(), "end": d2.isoformat(),
+        "payment_type": payment_type,
+        # 이 사람이 보는 사이트. None 이면 전부(관리자).
+        "sites": sites,
+        "payment_types": [{"key": k, "label": v} for k, v in PAYMENT_TYPES.items()],
+        "types": types,
+        "total": total,
+        "selected": next((t for t in types if t["key"] == payment_type), None),
+        "lines": shown,
+        "test": {"count": sum(1 for x in tests if x["kind"] == "sale"),
+                 "sales": sum(x["amount"] for x in tests if x["kind"] == "sale"),
+                 "refunds": sum(x["amount"] for x in tests if x["kind"] == "refund")},
+        "warnings": warnings,
+    }
 
 
 @router.get("/incentive/me")

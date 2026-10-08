@@ -59,7 +59,7 @@ const STEPS = [
   {
     selector: "[data-tour='download']",
     title: "다 쓰면 파일로 받으세요",
-    body: "한글·워드·PDF로 받을 수 있습니다. 양식에 맞춰 나옵니다.",
+    body: "저장한 뒤 한글·워드·PDF로 받을 수 있습니다. 양식에 맞춰 나옵니다.",
     place: "top",
   },
 ];

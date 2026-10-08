@@ -49,6 +49,10 @@ def _add_missing_columns() -> None:
             ("excluded", "INTEGER DEFAULT 0"),
             ("rule", "INTEGER DEFAULT 1"),
         ],
+        # 직접 입력한 매출의 결제 유형. 예전 줄은 기타.
+        "work_ledger_entries": [
+            ("payment_type", "VARCHAR(12) NOT NULL DEFAULT 'other'"),
+        ],
     }
     insp = sa.inspect(engine)
     with engine.begin() as conn:

@@ -29,7 +29,7 @@ function setCanonical(path) {
  * 페이지별 제목·설명·canonical을 갱신한다. (React Router 이동 시 SEO 대응)
  * SPA라 구글 등 JS 렌더링 크롤러에 도움을 준다. 네이버용 기본값은 index.html에 있다.
  */
-export function useSeo({ title, description, path }) {
+export function useSeo({ title, description, path, noindex = false }) {
   useEffect(() => {
     const fullTitle = title ? `${title} | ${SITE}` : SITE;
     document.title = fullTitle;
@@ -41,4 +41,20 @@ export function useSeo({ title, description, path }) {
       setCanonical(path);
     }
   }, [title, description, path]);
+
+  // 비공개·로그인 한정 페이지는 검색엔진에 싣지 않는다. 떠날 때 지워서
+  // 다음 페이지까지 noindex 가 따라가지 않게 한다.
+  // index.html 에 이미 "index, follow" 가 있으므로 지우지 않고 원래 값으로 되돌린다.
+  useEffect(() => {
+    if (!noindex) return undefined;
+    const el = document.head.querySelector('meta[name="robots"]');
+    const before = el?.getAttribute("content");
+    setMeta('meta[name="robots"]', "content", "noindex, nofollow");
+    return () => {
+      const now = document.head.querySelector('meta[name="robots"]');
+      if (!now) return;
+      if (before) now.setAttribute("content", before);
+      else now.remove();
+    };
+  }, [noindex]);
 }

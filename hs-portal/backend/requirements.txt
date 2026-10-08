@@ -12,6 +12,11 @@ psycopg2-binary==2.9.10
 cryptography==44.0.0
 gunicorn==23.0.0
 # 오디오 지문(숏츠가 롱폼의 몇 초에서 잘렸는지 소리로 찾기)에 쓴다.
-numpy==2.5.3
+# 운영 서버 파이썬이 3.10 이라 2.5.x(3.12 이상 전용)는 설치가 안 된다(2026-09-19
+# 배포에서 pip 가 통째로 실패했다). 파이썬 버전에 맞는 것을 고르게 둔다.
+# fingerprint.py 가 쓰는 함수(fft·stride_tricks 등)는 세 버전 모두에 있다.
+numpy==2.2.6; python_version < "3.11"
+numpy==2.3.5; python_version == "3.11"
+numpy==2.5.3; python_version >= "3.12"
 # 진로 테스트 추천 학과 챗봇(career_chat.py). 1.x 는 파이썬 3.10 이상이 필요하다.
 anthropic==1.6.0

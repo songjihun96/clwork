@@ -9,7 +9,7 @@ export default function FamilySites({ current = "" }) {
   const sites = [
     { key: "udj", name: "우리동네 직업계고", desc: "특성화고·마이스터고 찾기",
       url: "https://udjschool.ggm.kr" },
-    { key: "diary", name: "기록해", desc: "학교생활 일지·자기소개서",
+    { key: "diary", name: "기록해", desc: "학교생활일지·수업일지·자기소개서",
       url: "https://diary.ggm.kr" },
     { key: "sinmoon", name: "특성화고신문", desc: "직업계고 전문 언론",
       url: "https://www.sinmoon.net" },

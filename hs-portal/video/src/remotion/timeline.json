@@ -1,0 +1,517 @@
+{
+  "90s": {
+    "version": "90s",
+    "fps": 60,
+    "frames": 5401,
+    "seconds": 90.02,
+    "scenes": [
+      {
+        "id": "intro",
+        "lines": [
+          {
+            "text": "우리동네 직업계고, UDJ.",
+            "src": "audio/90s/intro_0.wav",
+            "dur": 2.241,
+            "at": 21,
+            "frames": 134
+          },
+          {
+            "text": "전국 특성화고와 마이스터고 정보를 한곳에서 찾아보는 직업계고 정보 포털입니다.",
+            "src": "audio/90s/intro_1.wav",
+            "dur": 4.994,
+            "at": 173,
+            "frames": 300
+          }
+        ],
+        "sec": 8.384999999999998,
+        "from": 0,
+        "frames": 503
+      },
+      {
+        "id": "home",
+        "lines": [
+          {
+            "text": "홈에서는 많이 찾아본 학교와 계열별 학교, 직업계고 소식을 볼 수 있습니다.",
+            "src": "audio/90s/home_0.wav",
+            "dur": 4.854,
+            "at": 21,
+            "frames": 291
+          }
+        ],
+        "sec": 6.514375000000001,
+        "from": 503,
+        "frames": 391
+      },
+      {
+        "id": "search",
+        "lines": [
+          {
+            "text": "지역, 학교 계열, 학과 계열, 남녀공학 조건으로 학교를 찾고,",
+            "src": "audio/90s/search_0.wav",
+            "dur": 4.507,
+            "at": 21,
+            "frames": 270
+          },
+          {
+            "text": "학교 이름으로도 바로 검색할 수 있습니다.",
+            "src": "audio/90s/search_1.wav",
+            "dur": 2.718,
+            "at": 309,
+            "frames": 163
+          }
+        ],
+        "sec": 10.514375000000001,
+        "from": 894,
+        "frames": 631
+      },
+      {
+        "id": "map",
+        "lines": [
+          {
+            "text": "검색 결과를 지도로 보면 가까운 학교를 쉽게 확인할 수 있습니다.",
+            "src": "audio/90s/map_0.wav",
+            "dur": 4.004,
+            "at": 21,
+            "frames": 240
+          }
+        ],
+        "sec": 6.514375000000001,
+        "from": 1525,
+        "frames": 391
+      },
+      {
+        "id": "school",
+        "lines": [
+          {
+            "text": "학교 페이지에서는 개설 학과와 위치, 연락처를 확인하고,",
+            "src": "audio/90s/school_0.wav",
+            "dur": 3.858,
+            "at": 21,
+            "frames": 231
+          },
+          {
+            "text": "궁금한 점은 학교에 직접 문의할 수 있습니다.",
+            "src": "audio/90s/school_1.wav",
+            "dur": 2.962,
+            "at": 270,
+            "frames": 178
+          }
+        ],
+        "sec": 10.014375000000001,
+        "from": 1916,
+        "frames": 601
+      },
+      {
+        "id": "compare",
+        "lines": [
+          {
+            "text": "관심 있는 학교는 최대 세 곳까지 나란히 비교할 수 있습니다.",
+            "src": "audio/90s/compare_0.wav",
+            "dur": 3.668,
+            "at": 21,
+            "frames": 220
+          }
+        ],
+        "sec": 6.514375000000001,
+        "from": 2517,
+        "frames": 391
+      },
+      {
+        "id": "admission",
+        "lines": [
+          {
+            "text": "학교가 공개한 취업·진학 정보에서는 졸업 후 진로와 취업 분야를 볼 수 있습니다.",
+            "src": "audio/90s/admission_0.wav",
+            "dur": 5.261,
+            "at": 21,
+            "frames": 316
+          }
+        ],
+        "sec": 8.014375000000001,
+        "from": 2908,
+        "frames": 481
+      },
+      {
+        "id": "quiz",
+        "lines": [
+          {
+            "text": "어떤 학과가 맞을지 모르겠다면 진로 테스트를 해 보세요.",
+            "src": "audio/90s/quiz_0.wav",
+            "dur": 3.438,
+            "at": 21,
+            "frames": 206
+          },
+          {
+            "text": "36개 문항에 답하면 관심 분야와 추천 학과, 통학 가능한 학교를 알려 줍니다.",
+            "src": "audio/90s/quiz_1.wav",
+            "dur": 5.263,
+            "at": 245,
+            "frames": 316
+          }
+        ],
+        "sec": 11.514375000000001,
+        "from": 3389,
+        "frames": 691
+      },
+      {
+        "id": "recap",
+        "lines": [
+          {
+            "text": "학교 검색과 지도, 학교 정보와 비교, 그리고 진로 테스트까지.",
+            "src": "audio/90s/recap_0.wav",
+            "dur": 4.41,
+            "at": 21,
+            "frames": 265
+          }
+        ],
+        "sec": 6.014375000000001,
+        "from": 4080,
+        "frames": 361
+      },
+      {
+        "id": "users",
+        "lines": [
+          {
+            "text": "직업계고 진학을 고민하는 학생과 학부모를 위한 서비스이며,",
+            "src": "audio/90s/users_0.wav",
+            "dur": 3.502,
+            "at": 21,
+            "frames": 210
+          },
+          {
+            "text": "학교는 학교 계정으로 학교 정보를 직접 소개할 수 있습니다.",
+            "src": "audio/90s/users_1.wav",
+            "dur": 3.617,
+            "at": 249,
+            "frames": 217
+          }
+        ],
+        "sec": 8.5,
+        "from": 4441,
+        "frames": 510
+      },
+      {
+        "id": "outro",
+        "lines": [
+          {
+            "text": "직업계고에 필요한 정보를 더 쉽고 편리하게.",
+            "src": "audio/90s/outro_0.wav",
+            "dur": 2.845,
+            "at": 21,
+            "frames": 171
+          },
+          {
+            "text": "우리동네 직업계고, UDJ.",
+            "src": "audio/90s/outro_1.wav",
+            "dur": 2.241,
+            "at": 210,
+            "frames": 134
+          }
+        ],
+        "sec": 7.5,
+        "from": 4951,
+        "frames": 450
+      }
+    ]
+  },
+  "60s": {
+    "version": "60s",
+    "fps": 60,
+    "frames": 3600,
+    "seconds": 60.0,
+    "scenes": [
+      {
+        "id": "intro",
+        "lines": [
+          {
+            "text": "우리동네 직업계고, UDJ.",
+            "src": "audio/60s/intro_0.wav",
+            "dur": 2.241,
+            "at": 21,
+            "frames": 134
+          },
+          {
+            "text": "전국 직업계고 정보를 한곳에서 찾아보는 정보 포털입니다.",
+            "src": "audio/60s/intro_1.wav",
+            "dur": 3.613,
+            "at": 173,
+            "frames": 217
+          }
+        ],
+        "sec": 7.004,
+        "from": 0,
+        "frames": 420
+      },
+      {
+        "id": "search",
+        "lines": [
+          {
+            "text": "지역과 학교 계열, 학과 계열 조건으로 학교를 검색하고,",
+            "src": "audio/60s/search_0.wav",
+            "dur": 3.841,
+            "at": 21,
+            "frames": 230
+          }
+        ],
+        "sec": 6.749333333333333,
+        "from": 420,
+        "frames": 405
+      },
+      {
+        "id": "map",
+        "lines": [
+          {
+            "text": "지도에서 가까운 학교를 확인할 수 있습니다.",
+            "src": "audio/60s/map_0.wav",
+            "dur": 2.539,
+            "at": 21,
+            "frames": 152
+          }
+        ],
+        "sec": 5.249333333333333,
+        "from": 825,
+        "frames": 315
+      },
+      {
+        "id": "school",
+        "lines": [
+          {
+            "text": "학교 페이지에서는 개설 학과와 연락처를 보고, 학교에 직접 문의할 수 있습니다.",
+            "src": "audio/60s/school_0.wav",
+            "dur": 5.081,
+            "at": 21,
+            "frames": 305
+          }
+        ],
+        "sec": 8.249333333333334,
+        "from": 1140,
+        "frames": 495
+      },
+      {
+        "id": "compare",
+        "lines": [
+          {
+            "text": "관심 있는 학교는 최대 세 곳까지 나란히 비교할 수 있고,",
+            "src": "audio/60s/compare_0.wav",
+            "dur": 3.4,
+            "at": 21,
+            "frames": 204
+          }
+        ],
+        "sec": 5.749333333333333,
+        "from": 1635,
+        "frames": 345
+      },
+      {
+        "id": "admission",
+        "lines": [
+          {
+            "text": "학교가 공개한 취업·진학 정보도 확인할 수 있습니다.",
+            "src": "audio/60s/admission_0.wav",
+            "dur": 3.341,
+            "at": 21,
+            "frames": 200
+          }
+        ],
+        "sec": 5.749333333333333,
+        "from": 1980,
+        "frames": 345
+      },
+      {
+        "id": "quiz",
+        "lines": [
+          {
+            "text": "진로 테스트에 답하면 관심 분야와 추천 학과, 통학 가능한 학교를 알려 줍니다.",
+            "src": "audio/60s/quiz_0.wav",
+            "dur": 4.994,
+            "at": 21,
+            "frames": 300
+          }
+        ],
+        "sec": 9.249333333333334,
+        "from": 2325,
+        "frames": 555
+      },
+      {
+        "id": "users",
+        "lines": [
+          {
+            "text": "직업계고 진학을 고민하는 학생과 학부모를 위한 서비스입니다.",
+            "src": "audio/60s/users_0.wav",
+            "dur": 3.611,
+            "at": 21,
+            "frames": 217
+          }
+        ],
+        "sec": 5.5,
+        "from": 2880,
+        "frames": 330
+      },
+      {
+        "id": "outro",
+        "lines": [
+          {
+            "text": "직업계고에 필요한 정보를 더 쉽고 편리하게.",
+            "src": "audio/60s/outro_0.wav",
+            "dur": 2.845,
+            "at": 21,
+            "frames": 171
+          },
+          {
+            "text": "우리동네 직업계고, UDJ.",
+            "src": "audio/60s/outro_1.wav",
+            "dur": 2.241,
+            "at": 210,
+            "frames": 134
+          }
+        ],
+        "sec": 6.5,
+        "from": 3210,
+        "frames": 390
+      }
+    ]
+  },
+  "30s": {
+    "version": "30s",
+    "fps": 60,
+    "frames": 1799,
+    "seconds": 29.98,
+    "scenes": [
+      {
+        "id": "intro",
+        "lines": [
+          {
+            "text": "우리동네 직업계고, UDJ.",
+            "src": "audio/30s/intro_0.wav",
+            "dur": 2.241,
+            "at": 21,
+            "frames": 134
+          },
+          {
+            "text": "전국 직업계고 정보를 한곳에서.",
+            "src": "audio/30s/intro_1.wav",
+            "dur": 2.245,
+            "at": 173,
+            "frames": 135
+          }
+        ],
+        "sec": 5.636,
+        "from": 0,
+        "frames": 338
+      },
+      {
+        "id": "search",
+        "lines": [
+          {
+            "text": "지역과 계열로 학교를 찾고,",
+            "src": "audio/30s/search_0.wav",
+            "dur": 1.89,
+            "at": 21,
+            "frames": 113
+          }
+        ],
+        "sec": 5.621333333333333,
+        "from": 338,
+        "frames": 337
+      },
+      {
+        "id": "school",
+        "lines": [
+          {
+            "text": "개설 학과와 학교 정보를 살펴보고,",
+            "src": "audio/30s/school_0.wav",
+            "dur": 2.279,
+            "at": 21,
+            "frames": 137
+          }
+        ],
+        "sec": 5.621333333333333,
+        "from": 675,
+        "frames": 337
+      },
+      {
+        "id": "quiz",
+        "lines": [
+          {
+            "text": "진로 테스트로 나에게 맞는 학과와 학교를 추천받으세요.",
+            "src": "audio/30s/quiz_0.wav",
+            "dur": 3.316,
+            "at": 21,
+            "frames": 199
+          }
+        ],
+        "sec": 7.621333333333333,
+        "from": 1012,
+        "frames": 457
+      },
+      {
+        "id": "outro",
+        "lines": [
+          {
+            "text": "우리동네 직업계고, UDJ.",
+            "src": "audio/30s/outro_0.wav",
+            "dur": 2.241,
+            "at": 21,
+            "frames": 134
+          }
+        ],
+        "sec": 5.5,
+        "from": 1469,
+        "frames": 330
+      }
+    ]
+  },
+  "15s": {
+    "version": "15s",
+    "fps": 60,
+    "frames": 900,
+    "seconds": 15.0,
+    "scenes": [
+      {
+        "id": "intro",
+        "lines": [
+          {
+            "text": "우리동네 직업계고, UDJ.",
+            "src": "audio/15s/intro_0.wav",
+            "dur": 2.241,
+            "at": 21,
+            "frames": 134
+          }
+        ],
+        "sec": 3.2,
+        "from": 0,
+        "frames": 192
+      },
+      {
+        "id": "montage",
+        "lines": [
+          {
+            "text": "학교 검색부터 진로 테스트까지, 한곳에서.",
+            "src": "audio/15s/montage_0.wav",
+            "dur": 3.185,
+            "at": 21,
+            "frames": 191
+          }
+        ],
+        "sec": 7.4,
+        "from": 192,
+        "frames": 444
+      },
+      {
+        "id": "outro",
+        "lines": [
+          {
+            "text": "udjschool.ggm.kr",
+            "src": "audio/15s/outro_0.wav",
+            "dur": 2.187,
+            "at": 21,
+            "frames": 131
+          }
+        ],
+        "sec": 4.4,
+        "from": 636,
+        "frames": 264
+      }
+    ]
+  }
+}

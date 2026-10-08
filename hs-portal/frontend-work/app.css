@@ -405,3 +405,15 @@ body.widget #settleCard .visit-mini { gap: 12px; }
 .card-inner { margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); }
 .extra-row { align-items: flex-end; }
 .extra-row label { margin-bottom: 8px; }
+
+/* ── 매출 통계: 결제 유형 ── */
+:root { --c-personal: #2a78d6; --c-school: #1baf7a; --c-udj: #eb6834; --c-video: #8e5bd8; --c-other: #9aa0ab; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr.sum-row td { border-top: 2px solid var(--line, #e3e3ea); background: #fafafc; }
+.ratio-bar { height: 8px; border-radius: 4px; background: #eef0f4; overflow: hidden; }
+.ratio-bar span { display: block; height: 100%; }
+.daterange { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.daterange input { width: auto; }
+@media (max-width: 680px) {
+  .daterange input { flex: 1 1 130px; }
+}

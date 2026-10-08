@@ -1,0 +1,588 @@
+{
+  "shots": {
+    "pub_school_before": {
+      "h": 1945,
+      "url": "/schools/1"
+    },
+    "req_empty": {
+      "h": 900,
+      "url": "/school-account-request"
+    },
+    "req_search": {
+      "h": 900,
+      "url": "/school-account-request"
+    },
+    "req_filled": {
+      "h": 1354,
+      "url": "/school-account-request"
+    },
+    "req_done": {
+      "h": 900,
+      "url": "/school-account-request"
+    },
+    "login_empty": {
+      "h": 900,
+      "url": "/login"
+    },
+    "login_filled": {
+      "h": 900,
+      "url": "/login"
+    },
+    "ms_first": {
+      "h": 900,
+      "url": "/my-school"
+    },
+    "pw_change": {
+      "h": 900,
+      "url": "/account/password"
+    },
+    "ms_stats": {
+      "h": 1069,
+      "url": "/my-school"
+    },
+    "ms_profile_empty": {
+      "h": 1919,
+      "url": "/my-school"
+    },
+    "ms_profile_filled": {
+      "h": 1919,
+      "url": "/my-school"
+    },
+    "ms_profile_saved": {
+      "h": 900,
+      "url": "/my-school"
+    },
+    "pub_school_after": {
+      "h": 2454,
+      "url": "/schools/1"
+    },
+    "pub_inquiry_filled": {
+      "h": 2454,
+      "url": "/schools/1"
+    },
+    "pub_inquiry_done": {
+      "h": 2106,
+      "url": "/schools/1"
+    },
+    "ms_inq_list": {
+      "h": 2228,
+      "url": "/my-school"
+    },
+    "ms_inq_typed": {
+      "h": 2228,
+      "url": "/my-school"
+    },
+    "ms_inq_sent": {
+      "h": 2128,
+      "url": "/my-school"
+    },
+    "ms_inq_notify": {
+      "h": 900,
+      "url": "/my-school"
+    },
+    "ms_events_empty": {
+      "h": 1540,
+      "url": "/my-school"
+    },
+    "ms_events_filled": {
+      "h": 1540,
+      "url": "/my-school"
+    },
+    "ms_events_added": {
+      "h": 1594,
+      "url": "/my-school"
+    },
+    "pub_events": {
+      "h": 980,
+      "url": "/events"
+    },
+    "pub_school_events": {
+      "h": 2507,
+      "url": "/schools/1"
+    },
+    "adm_stats": {
+      "h": 1344,
+      "url": "/my-school"
+    },
+    "adm_univ": {
+      "h": 1821,
+      "url": "/my-school"
+    },
+    "adm_emp": {
+      "h": 1289,
+      "url": "/my-school"
+    },
+    "adm_employers": {
+      "h": 1350,
+      "url": "/my-school"
+    },
+    "adm_excel": {
+      "h": 1184,
+      "url": "/my-school"
+    },
+    "adm_vis": {
+      "h": 1300,
+      "url": "/my-school"
+    },
+    "pub_admission": {
+      "h": 3317,
+      "url": "/schools/1/admission"
+    },
+    "ms_plan": {
+      "h": 1792,
+      "url": "/my-school"
+    },
+    "stu_fav": {
+      "h": 1001,
+      "url": "/favorites"
+    },
+    "stu_fav_events": {
+      "h": 900,
+      "url": "/favorites"
+    },
+    "stu_school": {
+      "h": 2538,
+      "url": "/schools/1"
+    }
+  },
+  "rects": {
+    "pub_before.inquiry": {
+      "x": 148,
+      "y": 1022,
+      "w": 792,
+      "h": 525
+    },
+    "req.search": {
+      "x": 460,
+      "y": 273,
+      "w": 520,
+      "h": 38
+    },
+    "req.result": {
+      "x": 465,
+      "y": 357,
+      "w": 510,
+      "h": 46
+    },
+    "req.mname": {
+      "x": 460,
+      "y": 337,
+      "w": 520,
+      "h": 38
+    },
+    "req.mphone": {
+      "x": 460,
+      "y": 479,
+      "w": 520,
+      "h": 38
+    },
+    "req.memail": {
+      "x": 460,
+      "y": 570,
+      "w": 520,
+      "h": 38
+    },
+    "req.submit": {
+      "x": 460,
+      "y": 895,
+      "w": 520,
+      "h": 38
+    },
+    "login.email": {
+      "x": 520,
+      "y": 220,
+      "w": 400,
+      "h": 38
+    },
+    "login.pw": {
+      "x": 520,
+      "y": 291,
+      "w": 400,
+      "h": 38
+    },
+    "login.btn": {
+      "x": 520,
+      "y": 343,
+      "w": 400,
+      "h": 38
+    },
+    "ms.banner": {
+      "x": 120,
+      "y": 73,
+      "w": 1200,
+      "h": 33
+    },
+    "ms.banner_btn": {
+      "x": 1210,
+      "y": 73,
+      "w": 110,
+      "h": 33
+    },
+    "ms.dday": {
+      "x": 309,
+      "y": 20,
+      "w": 107,
+      "h": 23
+    },
+    "ms.tabs": {
+      "x": 120,
+      "y": 197,
+      "w": 1200,
+      "h": 39
+    },
+    "ms.tab0": {
+      "x": 120,
+      "y": 197,
+      "w": 52,
+      "h": 38
+    },
+    "ms.tab1": {
+      "x": 174,
+      "y": 197,
+      "w": 80,
+      "h": 38
+    },
+    "ms.tab2": {
+      "x": 256,
+      "y": 197,
+      "w": 102,
+      "h": 38
+    },
+    "ms.tab3": {
+      "x": 360,
+      "y": 197,
+      "w": 101,
+      "h": 38
+    },
+    "ms.tab4": {
+      "x": 463,
+      "y": 197,
+      "w": 109,
+      "h": 38
+    },
+    "ms.tab5": {
+      "x": 574,
+      "y": 197,
+      "w": 80,
+      "h": 38
+    },
+    "ms.dday2": {
+      "x": 309,
+      "y": 20,
+      "w": 107,
+      "h": 23
+    },
+    "ms.stat_cards": {
+      "x": 120,
+      "y": 258,
+      "w": 1200,
+      "h": 93
+    },
+    "ms.chart": {
+      "x": 120,
+      "y": 367,
+      "w": 1200,
+      "h": 332
+    },
+    "pf.search_panel": {
+      "x": 120,
+      "y": 316,
+      "w": 1200,
+      "h": 284
+    },
+    "pf.detail_panel": {
+      "x": 120,
+      "y": 616,
+      "w": 1200,
+      "h": 878
+    },
+    "pf.slogan": {
+      "x": 143,
+      "y": 385,
+      "w": 1154,
+      "h": 57
+    },
+    "pf.dorm": {
+      "x": 143,
+      "y": 520,
+      "w": 377,
+      "h": 57
+    },
+    "pf.count": {
+      "x": 143,
+      "y": 685,
+      "w": 377,
+      "h": 57
+    },
+    "pf.depts": {
+      "x": 143,
+      "y": 756,
+      "w": 1154,
+      "h": 109
+    },
+    "pf.intro": {
+      "x": 143,
+      "y": 879,
+      "w": 1154,
+      "h": 109
+    },
+    "pf.facil": {
+      "x": 143,
+      "y": 1002,
+      "w": 1154,
+      "h": 109
+    },
+    "pf.video": {
+      "x": 143,
+      "y": 1248,
+      "w": 1154,
+      "h": 223
+    },
+    "pf.save": {
+      "x": 120,
+      "y": 1510,
+      "w": 110,
+      "h": 38
+    },
+    "pub.hero": {
+      "x": 120,
+      "y": 132,
+      "w": 1200,
+      "h": 152
+    },
+    "pub.basic": {
+      "x": 148,
+      "y": 594,
+      "w": 792,
+      "h": 125
+    },
+    "pub.depts": {
+      "x": 148,
+      "y": 751,
+      "w": 792,
+      "h": 119
+    },
+    "pub.intro": {
+      "x": 148,
+      "y": 902,
+      "w": 792,
+      "h": 141
+    },
+    "pub.facil": {
+      "x": 148,
+      "y": 1075,
+      "w": 792,
+      "h": 117
+    },
+    "pub.events": {
+      "x": 148,
+      "y": 1353,
+      "w": 792,
+      "h": 145
+    },
+    "pub.admission": {
+      "x": 148,
+      "y": 1223,
+      "w": 792,
+      "h": 98
+    },
+    "pub.inquiry": {
+      "x": 148,
+      "y": 1530,
+      "w": 792,
+      "h": 525
+    },
+    "pubq.form": {
+      "x": 148,
+      "y": 1530,
+      "w": 792,
+      "h": 525
+    },
+    "pubq.submit": {
+      "x": 171,
+      "y": 1994,
+      "w": 98,
+      "h": 38
+    },
+    "pubq.done": {
+      "x": 148,
+      "y": 1530,
+      "w": 792,
+      "h": 177
+    },
+    "iq.notify": {
+      "x": 120,
+      "y": 316,
+      "w": 1200,
+      "h": 223
+    },
+    "iq.first": {
+      "x": 120,
+      "y": 555,
+      "w": 1200,
+      "h": 314
+    },
+    "iq.first_text": {
+      "x": 143,
+      "y": 676,
+      "w": 1154,
+      "h": 90
+    },
+    "iq.first_send": {
+      "x": 143,
+      "y": 815,
+      "w": 116,
+      "h": 31
+    },
+    "iq.first_attach": {
+      "x": 143,
+      "y": 774,
+      "w": 97,
+      "h": 33
+    },
+    "iq.sent_item": {
+      "x": 120,
+      "y": 555,
+      "w": 1200,
+      "h": 214
+    },
+    "iq.notify_v": {
+      "x": 120,
+      "y": 316,
+      "w": 1200,
+      "h": 223
+    },
+    "ev.form": {
+      "x": 120,
+      "y": 258,
+      "w": 1200,
+      "h": 718
+    },
+    "ev.kind": {
+      "x": 143,
+      "y": 327,
+      "w": 1154,
+      "h": 59
+    },
+    "ev.title": {
+      "x": 143,
+      "y": 398,
+      "w": 1154,
+      "h": 57
+    },
+    "ev.date": {
+      "x": 143,
+      "y": 467,
+      "w": 571,
+      "h": 59
+    },
+    "ev.time": {
+      "x": 143,
+      "y": 538,
+      "w": 571,
+      "h": 62
+    },
+    "ev.place": {
+      "x": 143,
+      "y": 612,
+      "w": 1154,
+      "h": 57
+    },
+    "ev.add": {
+      "x": 143,
+      "y": 915,
+      "w": 86,
+      "h": 38
+    },
+    "ev.list": {
+      "x": 120,
+      "y": 992,
+      "w": 1200,
+      "h": 232
+    },
+    "pev.first": {
+      "x": 285,
+      "y": 540,
+      "w": 196,
+      "h": 18
+    },
+    "pub2.events": {
+      "x": 148,
+      "y": 1353,
+      "w": 792,
+      "h": 198
+    },
+    "adm.summary": {
+      "x": 120,
+      "y": 258,
+      "w": 1200,
+      "h": 312
+    },
+    "adm.subtabs": {
+      "x": 120,
+      "y": 586,
+      "w": 1200,
+      "h": 31
+    },
+    "adm.form": {
+      "x": 120,
+      "y": 633,
+      "w": 1200,
+      "h": 340
+    },
+    "adm.univ_panel": {
+      "x": 120,
+      "y": 633,
+      "w": 1200,
+      "h": 340
+    },
+    "adm.emp_panel": {
+      "x": 120,
+      "y": 633,
+      "w": 1200,
+      "h": 285
+    },
+    "adm.employers_panel": {
+      "x": 120,
+      "y": 633,
+      "w": 1200,
+      "h": 346
+    },
+    "adm.excel_panel": {
+      "x": 120,
+      "y": 633,
+      "w": 1200,
+      "h": 180
+    },
+    "adm.vis_panel": {
+      "x": 120,
+      "y": 633,
+      "w": 1200,
+      "h": 297
+    },
+    "plan.current": {
+      "x": 120,
+      "y": 258,
+      "w": 1200,
+      "h": 192
+    },
+    "plan.apply": {
+      "x": 120,
+      "y": 920,
+      "w": 1200,
+      "h": 305
+    },
+    "plan.orders": {
+      "x": 120,
+      "y": 1241,
+      "w": 1200,
+      "h": 181
+    },
+    "fav.first": {
+      "x": 120,
+      "y": 260,
+      "w": 1200,
+      "h": 370
+    }
+  }
+}

@@ -4,6 +4,7 @@ import { api, PLAN_LABEL } from "../api";
 import SchoolDetailView from "../components/SchoolDetailView";
 import { useSeo } from "../seo";
 import CareerChat from "../components/CareerChat";
+import CareerChatExport from "../components/CareerChatReport";
 
 const CATEGORY_ICONS = {
   특성화고: "🏫", 마이스터고: "⚙️", 과학고: "🔬", 외국어고: "🌐",
@@ -412,16 +413,29 @@ function Quizzing({ meta, step, answers, onPick, onBack, loading }) {
 function Result({ result, cardRef, onSaveImage, onRestart, onOpenSchool, navigate }) {
   const maxScore = Math.max(...Object.values(result.scores), 1);
   const [chatGroup, setChatGroup] = useState(null);   // 챗봇으로 연 추천 학과
+  // 계열마다 나눈 대화. 창을 닫아도 남아 있어야 이어 묻고, 한 장으로 정리해 저장할 수 있다.
+  const [chatLogs, setChatLogs] = useState({});
+  const setGroupLog = (group) => (upd) => setChatLogs((all) => ({
+    ...all, [group]: typeof upd === "function" ? upd(all[group] || []) : upd,
+  }));
 
   return (
     <>
-      {chatGroup && <CareerChat group={chatGroup} onClose={() => setChatGroup(null)} />}
+      {chatGroup && (
+        <CareerChat group={chatGroup} onClose={() => setChatGroup(null)}
+          log={chatLogs[chatGroup] || []} setLog={setGroupLog(chatGroup)}
+          allLogs={chatLogs} result={result} />
+      )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
         <span className="label" style={{ color: "var(--signal-deep)" }}>테스트 결과</span>
         <div style={{ display: "flex", gap: 6 }}>
           <button className="btn btn-signal btn-sm" onClick={onSaveImage}>이미지로 저장</button>
           <button className="btn btn-ghost btn-sm" onClick={onRestart}>다시 하기</button>
         </div>
+      </div>
+      {/* AI 에게 물어본 게 있으면, 결과와 대화를 함께 정리해 저장하는 단추가 생긴다. */}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: -8, marginBottom: 12 }}>
+        <CareerChatExport result={result} logs={chatLogs} label="테스트 결과 + AI 대화 정리 저장" />
       </div>
 
       {result.quality && result.quality.reliable === false && (

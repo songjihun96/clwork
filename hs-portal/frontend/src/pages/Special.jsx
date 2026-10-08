@@ -64,10 +64,12 @@ export default function Special() {
   });
 
   const [briefing, setBriefing] = useState(null);
+  const [lectures, setLectures] = useState(null);
   const [picked, setPicked] = useState(null);
 
   useEffect(() => {
     api.briefing().then(setBriefing).catch(() => setBriefing(null));
+    api.lectures().then(setLectures).catch(() => setLectures([]));
   }, []);
 
   const hasBriefing = !!(briefing?.chapters?.length || briefing?.video);
@@ -79,9 +81,8 @@ export default function Special() {
       title: briefing.headline || "직업계고설명회",
       desc: briefing.intro
         || "직업계고가 무엇인지, 우리 아이에게 맞는지 차근차근 짚어 드립니다.",
-      meta: briefing.summary?.chapters
-        ? `챕터 ${briefing.summary.chapters}개`
-        : "",
+      meta: [briefing.summary?.chapters ? `챕터 ${briefing.summary.chapters}개` : "",
+        "회원 전용 · 무료"].filter(Boolean).join(" · "),
     },
   ].filter(Boolean);
 
@@ -92,12 +93,17 @@ export default function Special() {
         직업계고 진로·취업 이야기를 영상으로 만나보세요.
       </p>
 
-      {cards.length === 0 ? (
-        <div className="empty" style={{ marginTop: 20 }}>
-          <p>아직 공개된 특강이 없습니다.</p>
+      {cards.length > 0 && <CardGrid cards={cards} />}
+
+      {/* 특강 카드. 누르면 영상 상세로 가고, 긴 영상은 오른쪽 챕터로 나눠 본다.
+          비어 있을 때 큰 빈 상자로 화면을 채우지 않는다 — 한 줄만 둔다. */}
+      {lectures && lectures.length > 0 && (
+        <div className="iv-grid" style={{ marginTop: cards.length ? 16 : 20 }}>
+          {lectures.map((v) => <LectureCard key={v.id} lecture={v} />)}
         </div>
-      ) : (
-        <CardGrid cards={cards} />
+      )}
+      {lectures && lectures.length === 0 && cards.length === 0 && (
+        <p className="lecture-empty">준비 중인 특강이 곧 올라옵니다.</p>
       )}
 
       <section style={{ marginTop: 36, paddingTop: 26, borderTop: "1px solid var(--line)" }}>
@@ -114,6 +120,40 @@ export default function Special() {
           submitLabel="신청하기" />
       )}
     </div>
+  );
+}
+
+function fmtLength(sec) {
+  const s = Math.max(Math.floor(Number(sec) || 0), 0);
+  if (!s) return "";
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return h ? `${h}시간 ${m}분` : `${m}분`;
+}
+
+/** 특강 카드 하나. 썸네일이 없으면 제목을 크게 깔아 빈 판처럼 안 보이게 한다. */
+function LectureCard({ lecture: v }) {
+  const date = v.created_at ? String(v.created_at).slice(0, 10).replaceAll("-", ".") : "";
+  return (
+    <Link to={`/videos/${v.id}`} className="iv-card">
+      <div className="iv-thumb">
+        {v.thumbnail
+          ? <img src={v.thumbnail} alt="" loading="lazy" />
+          : <span className="iv-thumb-name">{v.title}</span>}
+        {v.duration_sec > 0 && <span className="iv-thumb-dur">{fmtLength(v.duration_sec)}</span>}
+      </div>
+      <div className="iv-card-body">
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          {v.category && <span className="badge badge-cat">{v.category}</span>}
+          <span className="lecture-members">회원 전용</span>
+        </div>
+        <div className="iv-card-title">{v.title}</div>
+        {v.description && <p className="lecture-desc">{v.description}</p>}
+        <div className="iv-card-meta">
+          {[v.chapter_count ? `${v.chapter_count}개 파트` : "", date].filter(Boolean).join(" · ")}
+        </div>
+      </div>
+    </Link>
   );
 }
 

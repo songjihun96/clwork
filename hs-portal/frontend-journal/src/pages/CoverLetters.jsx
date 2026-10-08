@@ -9,6 +9,7 @@ export default function CoverLetters() {
   const [locked, setLocked] = useState(false);
   // 요금은 관리자가 바꿀 수 있다. 화면에 박아두면 바꿔도 예전 값이 남는다.
   const [price, setPrice] = useState(null);
+  const [trial, setTrial] = useState(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -18,7 +19,7 @@ export default function CoverLetters() {
         // 402 는 구독이 필요하다는 뜻
         if (e.status === 402) {
           setLocked(true);
-          api.subscription().then((s) => setPrice(s.price_per_month)).catch(() => {});
+          api.subscription().then((s) => { setPrice(s.price_per_month); setTrial(s.trial); }).catch(() => {});
         }
         else setError(e.message);
         setItems([]);
@@ -29,14 +30,30 @@ export default function CoverLetters() {
     return (
       <div className="wrap page" style={{ maxWidth: 620 }}>
         <span className="label">자기소개서</span>
+        {trial?.status === "trial_ended" && (
+          <div className="notice trial-ended-box" style={{ margin: "8px 0 14px" }}>
+            <b>무료 이용 기간이 종료되었습니다.</b><br />
+            계속 이용하려면 유료 서비스를 이용해 주세요. 무료 기간에 쓴 자기소개서는 그대로 보관되어,
+            이용권이 생기면 이어서 쓸 수 있습니다.
+          </div>
+        )}
         <h1>내 기록으로 자기소개서를 씁니다</h1>
         <p style={{ color: "var(--steel)", lineHeight: 1.8 }}>
-          그동안 남긴 일지와 일기를 자기소개서 항목에 맞게 정리할 수 있습니다.
+          그동안 남긴 학교생활일지와 수업일지를 자기소개서 항목에 맞게 정리할 수 있습니다.
           <b> 일지 작성과 선생님께 제출은 계속 무료</b>이고, 자기소개서만 이용권이 필요합니다.
         </p>
 
+        {/* 이용권을 얻는 길은 둘이다: 학교가 산 이용권의 코드, 또는 개인 구매. */}
         <div className="panel" style={{ marginTop: 18 }}>
           <SeatCodeBox featureLabel="자기소개서" onDone={() => window.location.reload()} />
+        </div>
+        <div className="panel">
+          <h3 style={{ marginTop: 0 }}>학교 코드가 없나요?</h3>
+          <p style={{ color: "var(--steel)", lineHeight: 1.7, margin: "0 0 10px" }}>
+            개인으로 이용권을 사면 선생님·학교 없이 바로 쓸 수 있습니다.
+            {price ? ` 한 달 ${Number(price).toLocaleString()}원부터.` : ""}
+          </p>
+          <Link className="btn btn-primary" to="/subscribe">개인 이용권 구매</Link>
         </div>
       </div>
     );

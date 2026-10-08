@@ -85,6 +85,8 @@ def profile_of(db: Session, user: User) -> dict:
         "grade": user.grade,
         "school_id": school.id if school else None,
         "school_name": school.name if school else "",
+        # 학교급(high/middle). 기록해가 학교 계정 공지 알림 대상을 학교급으로 거른다.
+        "school_level": (school.school_level or "high") if school else "",
         "verified": bool(v and v.status == "approved"),
         "verify_status": v.status if v else "",
         "teacher_udj_id": v.teacher_id if v else None,

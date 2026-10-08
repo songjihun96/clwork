@@ -90,7 +90,7 @@ export default function SharedJournal() {
       )}
 
       <p className="meta" style={{ marginTop: 30, textAlign: "center" }}>
-        기록해 · 학교생활 일지
+        기록해 · 학교생활일지 · 수업일지
       </p>
     </div>
   );

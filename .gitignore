@@ -14,3 +14,7 @@ build/
 .idea/
 Thumbs.db
 .DS_Store
+
+# 재생성 가능한 영상·음원 (hs-portal/video)
+hs-portal/video/**/*.mp4
+hs-portal/video/**/*.wav

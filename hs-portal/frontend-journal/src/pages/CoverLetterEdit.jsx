@@ -6,6 +6,10 @@ import { useAuth } from "../auth";
 
 const LIMIT = 1000;
 
+// 일지에서 답을 바로 찾기 어려운 항목. AI 가 1~2학년 기록으로 질문을 만들어 주고,
+// 학생이 답한 말을 재료로 글을 쓴다.
+const MOTIVE_TOPICS = ["apply_motive", "future_goal"];
+
 export default function CoverLetterEdit() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -20,7 +24,8 @@ export default function CoverLetterEdit() {
   const [materials, setMaterials] = useState(null);
   const [matBusy, setMatBusy] = useState(false);
   const [journalCount, setJournalCount] = useState(null);
-  const [review, setReview] = useState({});       // {항목키: 점검결과}
+  const [review, setReview] = useState({});
+  const [reviewing, setReviewing] = useState(false);   // 전체 검토 중(저장 중과 문구를 가르려고)       // {항목키: 점검결과}
   const [polish, setPolish] = useState({});       // {항목키: 다듬기결과}
   const [polishing, setPolishing] = useState("");
   const [msg, setMsg] = useState(null);
@@ -35,11 +40,24 @@ export default function CoverLetterEdit() {
   const [aiBusy, setAiBusy] = useState("");      // 지금 무엇을 하는 중인지
   const [aiTick, setAiTick] = useState(0);       // 몇 초째인지
   const [analysis, setAnalysis] = useState({});  // {일지id: 분석결과}
-  const [picked, setPicked] = useState([]);      // 초안에 쓸 일지
+  // 항목마다 학생이 직접 고른 기록 {항목키: [일지 id]}. 자소서와 함께 저장한다.
+  // 다른 항목으로 옮겨 갔다 와도 그 항목에서 고른 것이 그대로 남는다.
+  const [pickedMap, setPickedMap] = useState({});
   const [essay, setEssay] = useState(null);      // AI 초안
   // 키워드가 못 잡은 일지도 학생이 직접 골라 쓸 수 있어야 한다.
   // 본인은 "이 일지가 이 항목에 맞다" 는 것을 알기 때문이다.
-  const [picker, setPicker] = useState(null);   // 일지 목록
+  const [pickerOpen, setPickerOpen] = useState(false);   // "내 일지에서 직접 고르기" 목록
+  const [pickerTab, setPickerTab] = useState("all");      // all / class / school
+  const [picker, setPicker] = useState(null);             // 그 탭의 일지 목록
+  // 희망 직업군. 고르면 그 직업군과 이어지는 기록을 먼저 보여 주고 AI 초안에도 넘긴다.
+  const [jobs, setJobs] = useState([]);
+  const [jobCategory, setJobCategory] = useState("");
+  // 지원동기·입사 후 목표: AI 가 만든 질문과 학생의 답. 자소서와 함께 저장한다.
+  const [qa, setQa] = useState({});
+  // 기록 하나를 펼쳐 보는 창 {id}
+  const [viewer, setViewer] = useState(null);
+  const [kinds, setKinds] = useState([]);
+  const [categoryLabels, setCategoryLabels] = useState({});
   // 처음 쓰는 학생에게 순서를 짚어 준다. 한 번 보면 다시 안 뜬다.
   const [tour, setTour] = useState(false);
   // 좁은 화면에서는 13개를 다 펼치면 끝없이 스크롤해야 한다.
@@ -75,6 +93,10 @@ export default function CoverLetterEdit() {
         const t = m.resume_templates || [];
         setTemplates(t);
         setLegacy(m.legacy_templates || []);
+        setJobs(m.job_categories || []);
+        setKinds(m.kinds || []);
+        setCategoryLabels(Object.fromEntries(
+          (m.resume_categories || []).map((c) => [c.key, c.label])));
         // 서버에 한글 글꼴이 없으면 PDF 만 못 만든다.
         setPdfOk(m.pdf_available !== false);
         setActive((v) => v || (t[0]?.key ?? ""));
@@ -97,6 +119,9 @@ export default function CoverLetterEdit() {
       .then((d) => {
         setTitle(d.title || "");
         setContent(d.content || {});
+        setJobCategory(d.job_category || "");
+        setQa(d.question_answers || {});
+        setPickedMap(d.picked_records || {});
       })
       .catch((e) => {
         if (e.status === 402) setLocked(true);
@@ -118,7 +143,7 @@ export default function CoverLetterEdit() {
   const loadMaterials = (topic) => {
     if (!topic) return;
     setMatBusy(true);
-    api.coverLetterMaterials(topic)
+    api.coverLetterMaterials(topic, jobCategory)
       .then((d) => {
         setJournalCount(d.journal_count ?? 0);
         setMaterials(d.topics?.[0] || { matches: [], count: 0 });
@@ -130,7 +155,7 @@ export default function CoverLetterEdit() {
       .finally(() => setMatBusy(false));
   };
 
-  useEffect(() => { loadMaterials(active); }, [active]);
+  useEffect(() => { loadMaterials(active); }, [active, jobCategory]);
 
   const setItem = (key) => (e) =>
     setContent((c) => ({ ...c, [key]: e.target.value }));
@@ -162,29 +187,101 @@ export default function CoverLetterEdit() {
     }
   };
 
-  const openPicker = async () => {
-    if (picker) { setPicker(null); return; }
-    try {
-      const rows = await api.journals();
-      setPicker(Array.isArray(rows) ? rows : []);
-    } catch (e) {
-      setMsg({ type: "error", text: e.message });
+  const picked = pickedMap[active] || [];
+  const setPicked = (upd) => setPickedMap((m) => {
+    const cur = m[active] || [];
+    const next = typeof upd === "function" ? upd(cur) : upd;
+    return { ...m, [active]: next };
+  });
+  const PICK_MAX = 5;
+  const togglePick = (id) => {
+    if (picked.includes(id)) { setPicked((p) => p.filter((x) => x !== id)); return; }
+    if (picked.length >= PICK_MAX) {
+      setMsg({ type: "error", text: `한 항목에 기록은 ${PICK_MAX}개까지 고를 수 있습니다.` });
+      return;
     }
+    setPicked((p) => [...p, id]);
   };
+
+  // 목록은 탭마다 서버에서 그 종류만 받아 온다.
+  useEffect(() => {
+    if (!pickerOpen) return;
+    setPicker(null);
+    api.journals(pickerTab)
+      .then((rows) => setPicker(Array.isArray(rows) ? rows : []))
+      .catch((e) => { setMsg({ type: "error", text: e.message }); setPicker([]); });
+  }, [pickerOpen, pickerTab]);
+
+  // 고른 기록의 제목·날짜. 목록을 닫아도 보여야 해서 따로 들고 있는다.
+  const [pickedInfo, setPickedInfo] = useState({});
+  useEffect(() => {
+    api.journals().then((rows) => setPickedInfo(Object.fromEntries(
+      (rows || []).map((r) => [r.id, r])))).catch(() => {});
+  }, []);
 
   const analyzeOne = async (journalId) => {
     const r = await runAi("경험을 분석하고 있습니다",
       () => api.analyzeJournal(journalId));
     if (r) {
       setAnalysis((a) => ({ ...a, [journalId]: r }));
-      setPicked((p) => (p.includes(journalId) ? p : [...p, journalId]));
+      setPicked((p) => (p.includes(journalId) || p.length >= PICK_MAX ? p : [...p, journalId]));
     }
   };
 
+  const activeLabel = shownTemplates.find((t) => t.key === active)?.label || "";
+  const isMotive = MOTIVE_TOPICS.includes(active);
+
   const makeEssay = async () => {
-    const question = shownTemplates.find((t) => t.key === active)?.label || "";
     const r = await runAi("자기소개서를 쓰고 있습니다",
-      () => api.generateEssay(question, picked, LIMIT));
+      () => api.generateEssay(activeLabel, picked, LIMIT,
+        { job_category: jobCategory, topic: active }));
+    if (r) setEssay(r);
+  };
+
+  // 기록 하나를 펼쳐 본 뒤 "이 내용으로 자기소개서 작성하기".
+  // 지금 항목·희망 직업군·그 기록(과 거기 달린 카테고리)만 AI 에 넘긴다.
+  const essayFromRecord = async (journalId) => {
+    setViewer(null);
+    const r = await runAi("선택한 기록으로 자기소개서를 쓰고 있습니다",
+      () => api.generateEssay(activeLabel, [journalId], LIMIT,
+        { job_category: jobCategory, topic: active }));
+    if (r) setEssay(r);
+  };
+
+  // 지원동기·입사 후 목표: 1~2학년 기록으로 질문 만들기
+  const makeQuestions = async () => {
+    const r = await runAi("내 기록을 읽고 질문을 만들고 있습니다",
+      () => api.motiveQuestions(active, jobCategory));
+    if (r) {
+      setQa((all) => ({
+        ...all,
+        [active]: { questions: r.questions || [], answers: all[active]?.answers || {},
+                    record_count: r.record_count || 0 },
+      }));
+    }
+  };
+
+  const setAnswer = (qid, text) => setQa((all) => ({
+    ...all,
+    [active]: { ...(all[active] || {}), answers: { ...(all[active]?.answers || {}), [qid]: text } },
+  }));
+
+  // 학생의 답(+ 질문의 근거가 된 기록)으로 글을 쓴다.
+  const essayFromAnswers = async () => {
+    const cur = qa[active] || {};
+    const answered = (cur.questions || [])
+      .map((q) => ({ q, answer: (cur.answers?.[q.id] || "").trim() }))
+      .filter((x) => x.answer);
+    if (!answered.length) {
+      setMsg({ type: "error", text: "질문에 하나 이상 답해 주세요." });
+      return;
+    }
+    const ids = [...new Set(answered.flatMap((x) => x.q.basis.map((b) => b.record_id)))].slice(0, 5);
+    const r = await runAi("내 답변으로 자기소개서를 쓰고 있습니다",
+      () => api.generateEssay(activeLabel, ids, LIMIT, {
+        job_category: jobCategory, topic: active,
+        answers: answered.map((x) => ({ question: `[${x.q.group}] ${x.q.question}`, answer: x.answer })),
+      }));
     if (r) setEssay(r);
   };
 
@@ -199,14 +296,16 @@ export default function CoverLetterEdit() {
       return;
     }
     setBusy(true);
+    setReviewing(true);
     try {
       const r = await api.reviewCoverLetter(target, LIMIT);
       setReview(r.results || {});
-      setMsg({ type: "ok", text: "글을 살펴봤습니다. 항목 아래를 확인해보세요." });
+      setMsg({ type: "ok", text: "전체 검토를 마쳤습니다. 각 항목 아래에서 고칠 부분을 확인해 보세요." });
     } catch (e) {
       setMsg({ type: "error", text: e.message });
     } finally {
       setBusy(false);
+      setReviewing(false);
     }
   };
 
@@ -230,14 +329,15 @@ export default function CoverLetterEdit() {
     setBusy(true);
     setMsg(null);
     try {
-      const body = { title: title.trim() || "제목 없음", content };
-      if (isNew) {
-        const r = await api.createCoverLetter(body);
-        navigate(`/cover-letters/${r.id}`, { replace: true });
-      } else {
-        await api.updateCoverLetter(id, body);
-      }
-      setMsg({ type: "ok", text: "저장했습니다." });
+      const body = { title: title.trim() || "제목 없음", content,
+                     job_category: jobCategory, question_answers: qa,
+                     picked_records: pickedMap };
+      // 일지와 같이, 저장하면 바로 홈으로 가고 완료 창은 홈에서 띄운다(2026-09-28 요청).
+      const r = isNew ? await api.createCoverLetter(body) : await api.updateCoverLetter(id, body);
+      navigate("/", {
+        replace: isNew,
+        state: { saved: { kind: "cover", id: isNew ? r.id : Number(id) } },
+      });
     } catch (e) {
       if (e.status === 402) setLocked(true);
       else setMsg({ type: "error", text: e.message });
@@ -296,14 +396,13 @@ export default function CoverLetterEdit() {
     return (
       <div className="wrap page" style={{ maxWidth: 560 }}>
         <div className="notice">
-          구독이 만료되어 자기소개서를 열 수 없습니다. 작성한 내용은 그대로 보관됩니다.
+          이용권이 없어 자기소개서를 열 수 없습니다. 작성한 내용은 그대로 보관됩니다.
         </div>
-        {/* 예전에는 /subscribe 로 보냈는데 그 주소는 자기소개서 목록으로
-            되돌아올 뿐이라 아무 일도 안 일어났다. 개인 결제가 없어진 뒤로는
-            학교에서 받은 코드를 넣는 것이 유일한 길이고, 그 칸이 목록 화면에
-            있다. */}
-        <button className="btn btn-primary" style={{ marginTop: 14 }}
-          onClick={() => navigate("/cover-letters")}>등록 코드 넣기</button>
+        {/* 이용권은 학교 코드(목록 화면의 코드 칸)나 개인 구매(/subscribe)로 얻는다. */}
+        <div className="row" style={{ gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+          <button className="btn btn-primary" onClick={() => navigate("/cover-letters")}>학교 코드 넣기</button>
+          <button className="btn" onClick={() => navigate("/subscribe")}>개인 이용권 구매</button>
+        </div>
       </div>
     );
   }
@@ -326,11 +425,15 @@ export default function CoverLetterEdit() {
 
       <div className="panel" style={{ marginTop: 12 }}>
         <label className="field" style={{ marginBottom: 0 }}>
-          <span className="label">제목</span>
-          <input className="input" data-tour="title" value={title} placeholder="2027학년도 수시 자기소개서"
+          <span className="label">자기소개서 제목</span>
+          <input className="input" data-tour="title" value={title} maxLength={120}
+            placeholder="제목을 입력해 주세요 (예: ○○기업 지원 자기소개서)"
+            aria-label="자기소개서 제목"
             onChange={(e) => setTitle(e.target.value)} />
         </label>
       </div>
+
+      <JobPicker jobs={jobs} value={jobCategory} onChange={setJobCategory} />
 
       <div className="cl-layout" style={{ marginTop: 14 }}>
         {/* 왼쪽 — 작성 */}
@@ -473,10 +576,20 @@ export default function CoverLetterEdit() {
               {!matBusy && materials && materials.matches.map((m, i) => (
                 <div className="mat" key={i}>
                   <div className="mat-meta">
-                    {m.entry_date} · {m.kind_label} · {m.field_label}
+                    <span className={`mat-kind mat-kind-${m.kind || "diary"}`}>{m.kind_label}</span>
+                    {m.entry_date}
+                    {m.tagged && <span className="mat-tag" title="일지를 쓸 때 이 항목에 쓰겠다고 골라 둔 기록">내가 고른 기록</span>}
                   </div>
+                  {m.title && <div className="mat-title">{m.title}</div>}
+                  {m.field_label && <div className="mat-field">{m.field_label}</div>}
                   <p className="mat-text">{m.summary}</p>
+                  {m.job_keywords?.length > 0 && (
+                    <div className="mat-job">직업군 관련: {m.job_keywords.join(", ")}</div>
+                  )}
                   <div className="mat-tools">
+                    <button className="btn btn-sm" onClick={() => setViewer({ id: m.journal_id })}>
+                      기록 보기
+                    </button>
                     <button className="btn btn-sm" onClick={() => insert(m.original)}>
                       본문에 넣기
                     </button>
@@ -511,10 +624,36 @@ export default function CoverLetterEdit() {
               ))}
             </div>
 
+            {/* 학생이 직접 이 항목에 쓸 기록을 고른다. 이 항목의 카테고리를 달아 둔
+                기록이 맨 위에 온다. AI 를 쓰지 않아도 기록을 펼쳐 보고 옮길 수 있다. */}
+            <PickedList ids={picked} info={pickedInfo} max={PICK_MAX}
+              onOpen={(id) => setViewer({ id })} onRemove={togglePick} />
+            <RecordPicker open={pickerOpen} onToggle={() => setPickerOpen(!pickerOpen)}
+              tab={pickerTab} onTab={setPickerTab} rows={picker}
+              topic={active} topicLabel={activeLabel} categoryLabels={categoryLabels}
+              recommended={(materials?.matches || []).map((m) => m.journal_id)}
+              picked={picked} onTogglePick={togglePick}
+              onView={(id) => setViewer({ id })} />
+
             {/* AI 는 재료 아래에 둔다. 주인공은 학생이 쓴 일지이고,
                 AI 는 그것을 정리해 주는 쪽이다. 상자를 따로 두면
                 아무것도 고르지 않았을 때 빈 상자만 자리를 차지한다. */}
-            {aiOk && aiOk.available && (
+            {aiOk && aiOk.available && aiOk.consented && isMotive && (
+              <MotivePanel
+                topic={active}
+                data={qa[active]}
+                jobLabel={jobs.find((j) => j.key === jobCategory)?.label || ""}
+                busy={aiBusy}
+                tick={aiTick}
+                essay={essay}
+                onMake={makeQuestions}
+                onAnswer={setAnswer}
+                onWrite={essayFromAnswers}
+                onApply={() => { insert(essay.draft); setEssay(null); }}
+                onClose={() => setEssay(null)}
+              />
+            )}
+            {aiOk && aiOk.available && !(aiOk.consented && isMotive) && (
               <AiPanel
                 status={aiOk}
                 busy={aiBusy}
@@ -523,10 +662,6 @@ export default function CoverLetterEdit() {
                 essay={essay}
                 noMaterials={!matBusy && !!materials
                   && materials.matches.length === 0}
-                picker={picker}
-                analysis={analysis}
-                onOpenPicker={openPicker}
-                onPick={analyzeOne}
                 onConsent={async (agree) => {
                   try {
                     await api.setAiConsent(agree);
@@ -546,22 +681,18 @@ export default function CoverLetterEdit() {
             )}
           </div>
 
-          <div className="panel">
-            <h3 style={{ fontSize: 15, margin: "0 0 8px" }}>글 살펴보기</h3>
-            <p style={{ fontSize: 12.5, color: "var(--steel-light)", margin: "0 0 10px",
-                        lineHeight: 1.7 }}>
-              문장을 대신 써주지 않습니다. 쓴 글에서 고칠 만한 곳만 짚어드립니다.
-            </p>
-            <button className="btn btn-sm" onClick={runReview} disabled={busy}>
-              {busy ? "살펴보는 중…" : "내 글 살펴보기"}
-            </button>
-          </div>
         </aside>
       </div>
 
-      <div className="row" style={{ marginTop: 18 }}>
+      {/* 다 쓰면 [저장] → [전체 검토]로 이어진다. 전체 검토는 글을 대신 쓰지 않고,
+          쓴 글을 항목별로 확인해 고칠 부분만 알려 준다(결과는 각 항목 아래에 나온다). */}
+      <div className="row cl-actions" style={{ marginTop: 18 }}>
         <button className="btn btn-primary" onClick={save} disabled={busy}>
-          {busy ? "처리 중…" : "저장"}
+          {busy && !reviewing ? "처리 중…" : "저장"}
+        </button>
+        <button className="btn cl-review-btn" onClick={runReview} disabled={busy || filled.length === 0}
+          title="쓴 글을 항목별로 확인해 고칠 부분을 알려 줍니다">
+          {reviewing ? "검토하는 중…" : "전체 검토"}
         </button>
         <button className="btn" onClick={copyAll} disabled={filled.length === 0}>
           {copied === "all" ? "복사했습니다" : "전체 복사"}
@@ -573,9 +704,16 @@ export default function CoverLetterEdit() {
         <button className="btn btn-ghost" onClick={() => setTour(true)}>
           처음이신가요?
         </button>
-        {!isNew && (
+        {!isNew ? (
           <DownloadMenu id={id} disabled={busy || filled.length === 0} pdfOk={pdfOk}
             onError={(m) => setMsg({ type: "error", text: m })} />
+        ) : (
+          // 새 자소서는 아직 서버에 없어 파일로 받을 수 없다. 그래도 자리는 보여 준다 —
+          // 안 보이면 "처음이신가요?" 안내의 마지막(6번째) 단계가 짚을 곳이 없어 건너뛰어졌다.
+          <button className="btn" data-tour="download" disabled
+            title="먼저 저장하면 파일로 받을 수 있습니다">
+            파일로 받기 ▾
+          </button>
         )}
         {!isNew && (
           <>
@@ -586,8 +724,27 @@ export default function CoverLetterEdit() {
       </div>
 
       <p style={{ fontSize: 12.5, color: "var(--steel-light)", marginTop: 14, lineHeight: 1.7 }}>
-        내용이 있는 항목만 복사·저장됩니다. 빈 항목은 빠집니다.
+        <b>전체 검토</b>는 내가 쓴 글 전체를 확인해 빠진 내용, 글자 수, 고치면 좋을 부분을
+        항목마다 알려 주는 피드백입니다. 문장을 대신 써 주지는 않습니다.
+        <br />내용이 있는 항목만 복사·저장됩니다. 빈 항목은 빠집니다.
       </p>
+
+      {viewer && (
+        <RecordViewer
+          id={viewer.id}
+          kinds={kinds}
+          categoryLabels={categoryLabels}
+          topicLabel={activeLabel}
+          canAi={!!(aiOk?.available && aiOk?.consented)}
+          picked={picked.includes(viewer.id)}
+          onTogglePick={() => togglePick(viewer.id)}
+          aiBusy={!!aiBusy}
+          onClose={() => setViewer(null)}
+          onWrite={() => essayFromRecord(viewer.id)}
+          onAnalyze={() => { const id = viewer.id; setViewer(null); analyzeOne(id); }}
+          onInsert={(text) => { insert(text); setViewer(null); }}
+        />
+      )}
 
       {/* 이미지로 저장할 때만 쓰는 판. 화면 밖에 두어 보이지 않는다. */}
       <div className="cl-sheet" ref={sheetRef} aria-hidden="true">
@@ -849,7 +1006,6 @@ function AnalysisBox({ result, picked, onToggle, onInsert }) {
  *  동의를 받기 전에는 무엇이 일어나는지 먼저 알린다.
  *  개인정보처리방침 제7조에 적은 대로다. */
 function AiPanel({ status, busy, tick, picked, essay, noMaterials,
-                   picker, analysis, onOpenPicker, onPick,
                    onConsent, onGenerate, onApply, onClose }) {
   const pickedTotal = picked.length;
   const [open, setOpen] = useState(false);
@@ -923,11 +1079,11 @@ function AiPanel({ status, busy, tick, picked, essay, noMaterials,
         <>
           <p style={{ fontSize: 12.5, color: "var(--steel)", margin: 0,
                       lineHeight: 1.7 }}>
-            경험 <b>{pickedTotal}개</b>를 골랐습니다.
+            이 항목에 쓸 기록 <b>{pickedTotal}개</b>를 골랐습니다. 고른 기록만 근거로 씁니다.
           </p>
           <button className="btn btn-sm btn-primary" style={{ marginTop: 8 }}
             onClick={onGenerate}>
-            이 경험으로 초안 쓰기
+            고른 기록으로 자기소개서 작성하기
           </button>
         </>
       ) : (
@@ -935,53 +1091,8 @@ function AiPanel({ status, busy, tick, picked, essay, noMaterials,
                     lineHeight: 1.7 }}>
           {noMaterials
             ? "이 항목에 맞는 재료를 못 찾았습니다. 내 기록에서 쓸 만한 일지를 찾아 AI로 정리해 보세요."
-            : "재료의 AI로 경험 분석을 누르면 경험을 정리해 드립니다. 정리한 것을 골라 초안을 만들 수 있습니다."}
+            : "재료의 기록 보기에서 이 내용으로 자기소개서 작성하기를 누르거나, AI로 경험 분석으로 정리한 것을 골라 초안을 만들 수 있습니다."}
         </p>
-      )}
-
-      {/* 키워드가 못 잡은 일지도 직접 골라 쓸 수 있게 한다.
-          재료가 없을 때 여기가 유일한 길이 된다. */}
-      {!busy && (
-        <>
-          {/* 재료가 없을 때는 여기가 유일한 길이라 테두리 없는 ghost 로 두면
-              버튼인 줄 모르고 지나친다. */}
-          <button className="btn btn-sm" style={{ marginTop: 8 }}
-            onClick={onOpenPicker}>
-            {picker ? "목록 접기" : "내 일지에서 직접 고르기"}
-          </button>
-
-          {picker && (
-            <div style={{ marginTop: 8, maxHeight: 260, overflowY: "auto",
-                          border: "1px solid var(--line)", borderRadius: 8,
-                          padding: 6 }}>
-              {picker.length === 0 ? (
-                <p style={{ fontSize: 12.5, color: "var(--steel-light)",
-                            margin: 6, lineHeight: 1.7 }}>
-                  아직 쓴 일지가 없습니다.{" "}
-                  <a href="/journals/new">첫 기록</a>을 남겨보세요.
-                </p>
-              ) : picker.map((j) => (
-                <button key={j.id} className="btn btn-ghost"
-                  disabled={!!analysis[j.id]}
-                  onClick={() => onPick(j.id)}
-                  style={{
-                    display: "block", width: "100%", textAlign: "left",
-                    padding: "7px 8px", border: "none", background: "none",
-                    borderTop: "1px solid var(--line)",
-                  }}>
-                  <span style={{ fontSize: 11.5, color: "var(--steel-light)" }}>
-                    {String(j.entry_date).slice(0, 10)} · {j.kind_label || ""}
-                    {analysis[j.id] ? " · 정리함" : ""}
-                  </span>
-                  <span style={{ display: "block", fontSize: 13, marginTop: 1,
-                                 lineHeight: 1.6 }}>
-                    {(j.title || j.preview || j.subject || "내용 보기").slice(0, 40)}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-        </>
       )}
 
       {essay && <EssayBox essay={essay} onApply={onApply} onClose={onClose} />}
@@ -1005,6 +1116,14 @@ function EssayBox({ essay, onApply, onClose }) {
       <p className="meta" style={{ margin: "8px 0 0" }}>
         {essay.character_count}자 / {essay.character_limit}자
       </p>
+
+      {essay.used_records?.length > 0 && (
+        <p className="meta" style={{ margin: "6px 0 0", lineHeight: 1.7 }}>
+          근거로 쓴 기록:{" "}
+          {essay.used_records.map((r) => `${String(r.entry_date).slice(0, 10)} ${r.kind} ${r.title}`.trim())
+            .join(" · ")}
+        </p>
+      )}
 
       {essay.safe === false && essay.issues?.length > 0 && (
         <div style={{ marginTop: 8, padding: 8, borderRadius: 6,
@@ -1036,6 +1155,326 @@ function EssayBox({ essay, onApply, onClose }) {
       <p className="meta" style={{ margin: "6px 0 0", lineHeight: 1.7 }}>
         AI가 쓴 초안입니다. 내 말로 고쳐서 쓰세요.
       </p>
+    </div>
+  );
+}
+/** 직업 선택. 검색해서 고르고, 다시 누르면 선택을 푼다.
+ *  고른 직업군은 "이 항목에 쓸 만한 내 기록"의 순서와 AI 초안에 쓰인다. */
+function JobPicker({ jobs, value, onChange }) {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(!value);
+  const current = jobs.find((j) => j.key === value);
+  const shown = q.trim()
+    ? jobs.filter((j) => j.label.replace(/·/g, "").includes(q.trim().replace(/·/g, "")))
+    : jobs;
+  if (!jobs.length) return null;
+  return (
+    <div className="panel job-picker">
+      <div className="row" style={{ alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span className="label" style={{ margin: 0 }}>직업 선택</span>
+        {current ? (
+          <span className="job-current">{current.label}</span>
+        ) : (
+          <span className="meta">아직 고르지 않았습니다</span>
+        )}
+        <div className="spacer" />
+        <button type="button" className="btn btn-sm btn-ghost" onClick={() => setOpen(!open)}>
+          {open ? "접기" : current ? "바꾸기" : "고르기"}
+        </button>
+      </div>
+      {open && (
+        <>
+          <p className="meta" style={{ margin: "8px 0 10px", lineHeight: 1.7 }}>
+            희망하는 직업군을 고르면, 그 직업과 이어지는 내 기록을 먼저 보여 주고
+            AI 초안에도 반영합니다.
+          </p>
+          <input className="input" value={q} placeholder="직업 검색 (예: 디자인, 개발, 회계)"
+            aria-label="직업 검색" onChange={(e) => setQ(e.target.value)} />
+          <div className="job-chips" role="radiogroup" aria-label="직업군">
+            {shown.map((j) => (
+              <button key={j.key} type="button" role="radio" aria-checked={value === j.key}
+                className={`job-chip${value === j.key ? " on" : ""}`}
+                onClick={() => { onChange(value === j.key ? "" : j.key); if (value !== j.key) setOpen(false); }}>
+                {j.label}
+              </button>
+            ))}
+            {shown.length === 0 && <span className="meta">찾는 직업군이 없습니다.</span>}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** 이 항목에 쓰려고 고른 기록. 목록을 접어도 보인다. */
+function PickedList({ ids, info, max, onOpen, onRemove }) {
+  if (!ids.length) return null;
+  return (
+    <div className="picked-list">
+      <div className="picked-list-head">이 항목에 쓸 기록 <b>{ids.length}</b> / {max}</div>
+      {ids.map((id) => {
+        const j = info[id];
+        return (
+          <div key={id} className="picked-item">
+            <button type="button" className="picked-item-main" onClick={() => onOpen(id)}>
+              <span className="meta">
+                {j ? `${String(j.entry_date).slice(0, 10)} · ${j.kind_label}` : "기록"}
+              </span>
+              <span>{j ? (j.title || j.preview || "제목 없음") : `#${id}`}</span>
+            </button>
+            <button type="button" className="btn btn-sm btn-ghost" aria-label="빼기"
+              onClick={() => onRemove(id)}>×</button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const PICKER_TABS = [["all", "전체"], ["class", "수업일지"], ["school", "학교생활일지"]];
+
+/** 내 일지에서 직접 고르기.
+ *
+ *  지금 쓰는 자소서 항목과 이어진 기록을 먼저 보여 준다.
+ *    1) 일지를 쓸 때 이 항목 카테고리를 직접 달아 둔 기록
+ *    2) 카테고리는 안 달았지만 내용이 이 항목과 맞아 보이는 기록(추천)
+ *    3) 그 밖의 기록 — 카테고리를 안 골랐어도 빠뜨리지 않고 맨 아래에 둔다
+ *  체크하면 이 항목에 쓸 기록으로 고르고, 줄을 누르면 내용을 펼쳐 본다. */
+function RecordPicker({ open, onToggle, tab, onTab, rows, topic, topicLabel, categoryLabels,
+                        recommended, picked, onTogglePick, onView }) {
+  const rec = new Set(recommended || []);
+  const groups = [[], [], []];
+  for (const j of rows || []) {
+    if ((j.resume_tags || []).includes(topic)) groups[0].push(j);
+    else if (rec.has(j.id)) groups[1].push(j);
+    else groups[2].push(j);
+  }
+  const titles = [
+    `이 항목 카테고리를 단 기록`,
+    "내용이 이 항목과 맞아 보이는 기록",
+    "그 밖의 기록",
+  ];
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <button className="btn btn-sm" onClick={onToggle} aria-expanded={open}>
+        {open ? "목록 접기" : "내 일지에서 직접 고르기"}
+      </button>
+      {open && (
+        <div className="record-picker">
+          <div className="record-picker-tabs" role="tablist" aria-label="일지 종류">
+            {PICKER_TABS.map(([k, label]) => (
+              <button key={k} type="button" role="tab" aria-selected={tab === k}
+                className={`record-picker-tab${tab === k ? " on" : ""}`} onClick={() => onTab(k)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {topicLabel && <p className="record-picker-topic">지금 항목: {topicLabel}</p>}
+          {rows === null && <p className="meta" style={{ margin: 6 }}>불러오는 중…</p>}
+          {rows && rows.length === 0 && (
+            <p className="meta" style={{ margin: 6, lineHeight: 1.7 }}>
+              {tab === "class" ? "수업일지가 없습니다." : tab === "school" ? "학교생활일지가 없습니다." : "아직 쓴 일지가 없습니다."}
+              {" "}<a href="/journals/new">첫 기록</a>을 남겨보세요.
+            </p>
+          )}
+          {groups.map((list, gi) => list.length > 0 && (
+            <div key={gi}>
+              <div className="record-picker-group">{titles[gi]} <span>{list.length}</span></div>
+              {list.map((j) => {
+                const on = picked.includes(j.id);
+                return (
+                  <div key={j.id} className={`record-picker-row${on ? " on" : ""}`}>
+                    <input type="checkbox" checked={on} aria-label={`${j.title || "기록"} 사용하기`}
+                      onChange={() => onTogglePick(j.id)} />
+                    <button type="button" className="record-picker-open" onClick={() => onView(j.id)}>
+                      <span className="meta">
+                        {String(j.entry_date).slice(0, 10)} · {j.kind_label || ""}
+                        {gi === 0 && <span className="record-picker-tag">{categoryLabels[topic] ? "카테고리 일치" : ""}</span>}
+                        {gi === 1 && <span className="record-picker-tag rec">추천</span>}
+                      </span>
+                      <span className="record-picker-title">
+                        {(j.title || j.preview || j.subject || "내용 보기").slice(0, 40)}
+                      </span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 기록 하나를 펼쳐 보는 창.
+ *  학생이 무엇을 썼는지 그대로 보여 주고, 이 기록만 근거로 초안을 쓰게 한다. */
+function RecordViewer({ id, kinds, categoryLabels, topicLabel, canAi, aiBusy,
+                        picked, onTogglePick, onClose, onWrite, onAnalyze, onInsert }) {
+  const [d, setD] = useState(null);
+  const [err, setErr] = useState("");
+  // 부모가 다시 그려질 때마다 onClose 가 새로 만들어진다. 그걸 의존성에 두면
+  // 기록을 계속 다시 불러오므로, 닫기는 ref 로 들고 불러오기는 id 에만 묶는다.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    setD(null);
+    api.journal(id).then(setD).catch((e) => setErr(e.message));
+  }, [id]);
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") closeRef.current(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const kind = kinds.find((k) => k.kind === d?.kind);
+  const fieldList = kind
+    ? [...kind.fields.map((f) => ({ key: f.key, label: f.full_label || f.label })),
+       ...(kind.legacy_fields || [])]
+    : [];
+  const rows = d ? fieldList.filter((f) => (d.content?.[f.key] || "").trim()) : [];
+  const whole = rows.map((f) => d.content[f.key].trim()).join("\n\n");
+
+  return (
+    <div className="rv-backdrop" role="presentation"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="rv-dialog" role="dialog" aria-modal="true" aria-label="기록 보기">
+        <div className="row" style={{ alignItems: "flex-start", gap: 8 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {d && (
+              <div className="meta">
+                {kind?.label || d.kind} · {String(d.entry_date).slice(0, 10)}
+                {d.subject ? ` · ${d.subject}` : ""}
+              </div>
+            )}
+            <h3 style={{ margin: "4px 0 0" }}>{d ? (d.title || "제목 없음") : "불러오는 중…"}</h3>
+          </div>
+          <button type="button" className="btn btn-sm btn-ghost" onClick={onClose}>닫기</button>
+        </div>
+
+        {err && <div className="notice notice-error" style={{ marginTop: 10 }}>{err}</div>}
+
+        {d?.resume_tags?.length > 0 && (
+          <div className="rv-tags">
+            {d.resume_tags.map((k) => (
+              <span key={k} className="rv-tag">{categoryLabels[k] || k}</span>
+            ))}
+          </div>
+        )}
+
+        <div className="rv-body">
+          {d && rows.length === 0 && <p className="meta">적힌 내용이 없습니다.</p>}
+          {rows.map((f) => (
+            <div key={f.key} className="rv-field">
+              <div className="rv-label">{f.label}</div>
+              <p>{d.content[f.key]}</p>
+            </div>
+          ))}
+        </div>
+
+        {d && rows.length > 0 && (
+          <div className="rv-actions">
+            <button type="button" className={`btn ${picked ? "btn-primary" : ""}`}
+              aria-pressed={picked} onClick={onTogglePick}>
+              {picked ? "✓ 이 항목에 사용 중 (빼기)" : "이 기록 사용하기"}
+            </button>
+            {canAi ? (
+              <button type="button" className="btn" disabled={aiBusy} onClick={onWrite}>
+                이 내용으로 자기소개서 작성하기
+              </button>
+            ) : (
+              <span className="meta">AI 기능에 동의하면 이 기록으로 초안을 만들 수 있습니다.</span>
+            )}
+            {canAi && (
+              <button type="button" className="btn btn-sm btn-ghost" disabled={aiBusy} onClick={onAnalyze}>
+                AI로 경험 분석
+              </button>
+            )}
+            <button type="button" className="btn btn-sm btn-ghost" onClick={() => onInsert(whole)}>
+              원문을 본문에 넣기
+            </button>
+          </div>
+        )}
+        {topicLabel && d && rows.length > 0 && (
+          <p className="meta" style={{ margin: "8px 0 0", lineHeight: 1.6 }}>
+            지금 쓰는 항목: {topicLabel}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** 지원동기 · 입사 후 목표.
+ *
+ *  지난 일을 적은 일지에는 "왜 이 회사에" "앞으로 무엇을"의 답이 없다.
+ *  그래서 AI 가 1~2학년 기록을 읽고 이 학생에게 맞는 질문을 만들고,
+ *  학생이 답한 말로 글을 쓴다. 학생이 카테고리를 고를 필요는 없다. */
+function MotivePanel({ topic, data, jobLabel, busy, tick, essay,
+                       onMake, onAnswer, onWrite, onApply, onClose }) {
+  const questions = data?.questions || [];
+  const answers = data?.answers || {};
+  const groups = [...new Set(questions.map((q) => q.group))];
+  const answered = questions.filter((q) => (answers[q.id] || "").trim()).length;
+  const isGoal = topic === "future_goal";
+
+  return (
+    <div className="motive" data-tour="ai">
+      <h4 style={{ margin: 0, fontSize: 14 }}>
+        {isGoal ? "입사 후 목표 — 질문에 답하며 쓰기" : "지원동기 — 질문에 답하며 쓰기"}
+      </h4>
+      <p className="meta" style={{ margin: "6px 0 0", lineHeight: 1.7 }}>
+        1~2학년 때 쓴 학교생활일지와 수업일지를 읽고, 나에게 맞는 질문을 만들어 드립니다.
+        {isGoal ? " 단기(입사 후 1~3년)와 장기(5년 이후) 목표를 나눠 묻습니다." : ""}
+        {jobLabel ? ` 희망 직업군(${jobLabel})도 반영합니다.` : " 위에서 직업을 고르면 더 잘 맞는 질문이 나옵니다."}
+      </p>
+
+      {busy ? (
+        <p style={{ fontSize: 13, margin: "10px 0 0", lineHeight: 1.7 }}>
+          {busy}…{tick > 3 && ` (${tick}초)`}
+        </p>
+      ) : (
+        <button type="button" className="btn btn-sm btn-primary" style={{ marginTop: 10 }} onClick={onMake}>
+          {questions.length ? "질문 다시 만들기" : "내 기록으로 질문 만들기"}
+        </button>
+      )}
+
+      {groups.map((g) => (
+        <div key={g} className="motive-group">
+          <div className="motive-group-title">{g}</div>
+          {questions.filter((q) => q.group === g).map((q) => (
+            <div key={q.id} className="motive-q">
+              <label htmlFor={`mq-${q.id}`}>{q.question}</label>
+              {q.basis?.length > 0 && (
+                <div className="motive-basis">
+                  근거: {q.basis.map((b) =>
+                    `${String(b.entry_date).slice(0, 10)} ${b.title}${b.evidence ? ` — ${b.evidence}` : ""}`)
+                    .join(" / ")}
+                </div>
+              )}
+              <textarea id={`mq-${q.id}`} className="motive-answer" value={answers[q.id] || ""}
+                placeholder="떠오르는 대로 편하게 적어 주세요"
+                onChange={(e) => onAnswer(q.id, e.target.value)} />
+            </div>
+          ))}
+        </div>
+      ))}
+
+      {questions.length > 0 && !busy && (
+        <>
+          <button type="button" className="btn btn-sm btn-primary" style={{ marginTop: 10 }}
+            disabled={!answered} onClick={onWrite}>
+            답변으로 자기소개서 작성하기
+          </button>
+          <p className="meta" style={{ margin: "6px 0 0", lineHeight: 1.6 }}>
+            {answered ? `${answered}개 답변을 씁니다.` : "하나 이상 답하면 쓸 수 있습니다."}
+            {" "}답에 없는 경험은 만들어 넣지 않습니다.
+          </p>
+        </>
+      )}
+
+      {essay && <EssayBox essay={essay} onApply={onApply} onClose={onClose} />}
     </div>
   );
 }

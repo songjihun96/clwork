@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 
@@ -21,6 +21,9 @@ function ageOf(iso) {
 export default function Signup() {
   const { setSession } = useAuth();
   const navigate = useNavigate();
+  const [search] = useSearchParams();
+  const rawNext = search.get("next") || "";
+  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "";
 
   const [form, setForm] = useState({
     email: "", password: "", confirm: "", name: "",
@@ -84,7 +87,7 @@ export default function Signup() {
         return;
       }
       setSession(res.access_token, res.user);
-      navigate("/", { replace: true });
+      navigate(next || "/", { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {

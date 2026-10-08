@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { DormBadge, PlanBadge } from "./SchoolCard";
 import { ddayClass, ddayText } from "../dday";
-import { errMsg, okMsg } from "../toast";
+import { errMsg } from "../toast";
 
 function eventTimeLine(e) {
   const parts = [e.start_date + (e.end_date ? ` ~ ${e.end_date}` : "")];
@@ -97,7 +98,9 @@ function InquiryForm({ schoolId, schoolName, canQuick }) {
   const [showNotice, setShowNotice] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
-  const [done, setDone] = useState(false);
+  // 접수 완료 문구. okMsg() 는 토스트만 띄우고 null 을 돌려주므로 msg 에 담으면
+  // 완료 화면의 상자가 비어 보인다 — 따로 들고 있는다.
+  const [done, setDone] = useState("");
 
   useEffect(() => {
     api.inquiryPrivacy().then(setNotice).catch(() => {});
@@ -122,8 +125,7 @@ function InquiryForm({ schoolId, schoolName, canQuick }) {
         question: form.question.trim(),
         privacy_consent: consent,
       });
-      setDone(true);
-      setMsg(okMsg(res.message));
+      setDone(res.message || "문의가 접수되었습니다. 학교가 답변하면 입력하신 이메일로 보내드립니다.");
     } catch (e) {
       setMsg(errMsg(e.message));
     } finally {
@@ -135,9 +137,9 @@ function InquiryForm({ schoolId, schoolName, canQuick }) {
     return (
       <div className="panel" id="inquiry">
         <h3>학교에 문의하기</h3>
-        <div className="notice notice-ok">{msg?.text}</div>
+        <div className="notice notice-ok">{done}</div>
         <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }}
-          onClick={() => { setDone(false); setForm({ asker_name: "", contact_email: "", contact_phone: "", question: "" }); setConsent(false); setMsg(null); }}>
+          onClick={() => { setDone(""); setForm({ asker_name: "", contact_email: "", contact_phone: "", question: "" }); setConsent(false); setMsg(null); }}>
           다른 문의 남기기
         </button>
       </div>
@@ -226,6 +228,7 @@ export default function SchoolDetailView({ schoolId, embedded, onLoaded }) {
   const [school, setSchool] = useState(null);
   const [error, setError] = useState("");
   const [articles, setArticles] = useState([]);
+  const [interviews, setInterviews] = useState([]);
   const [selectedEvent, setSelectedEvent] = useState(null);
 
   const load = () =>
@@ -240,6 +243,7 @@ export default function SchoolDetailView({ schoolId, embedded, onLoaded }) {
   useEffect(() => {
     load();
     api.schoolArticles(schoolId).then(setArticles).catch(() => setArticles([]));
+    api.interviews(schoolId).then((d) => setInterviews(d.items || [])).catch(() => setInterviews([]));
     // 조회수는 화면을 열 때 한 번만 센다. load() 안에 두면 즐겨찾기 등으로
     // 다시 불릴 때마다 중복 집계된다.
     api.countSchoolView(schoolId).catch(() => {});
@@ -428,6 +432,28 @@ export default function SchoolDetailView({ schoolId, embedded, onLoaded }) {
           </div>
         )}
 
+        {/* 진학정보(플래티넘). 서버가 이 사람이 열 수 있을 때만 true 를 준다. */}
+        {school.has_admission_info && (
+          <div className="panel adm-link-panel">
+            <div>
+              <h3 style={{ marginBottom: 4 }}>취업/진학 정보</h3>
+              <p style={{ margin: 0, fontSize: 13.5, color: "var(--steel)" }}>
+                졸업생 진로·주요 진학 대학·취업 분야·주요 취업처 (학교 직접 입력 자료)
+              </p>
+            </div>
+            {/* 모달(embedded)은 새 탭으로, 상세 페이지는 앱 안에서 넘어간다.
+                from 을 넘겨야 진학정보의 '← 학교 정보' 가 새 기록을 쌓지 않고
+                뒤로 돌아온다 — 안 그러면 '뒤로'가 두 화면을 무한히 오간다. */}
+            {embedded ? (
+              <a className="btn btn-signal btn-sm" href={`/schools/${school.id}/admission`}
+                target="_blank" rel="noreferrer">취업/진학 정보 보기</a>
+            ) : (
+              <Link className="btn btn-signal btn-sm" to={`/schools/${school.id}/admission`}
+                state={{ from: "school" }}>취업/진학 정보 보기</Link>
+            )}
+          </div>
+        )}
+
         {school.admission_info && (
           <div className="panel">
             <h3>학교 상세 안내</h3>
@@ -486,6 +512,35 @@ export default function SchoolDetailView({ schoolId, embedded, onLoaded }) {
                   <YoutubeCard video={v} />
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* 포털이 학교에 찾아가 찍은 인터뷰. 재생은 회원만(인터뷰 화면에서 막는다). */}
+        {interviews.length > 0 && (
+          <div className="panel" id="school-interviews">
+            <h3>학교 홍보 인터뷰</h3>
+            <div style={{ display: "grid", gap: 8 }}>
+              {interviews.map((it) => {
+                const inner = (
+                  <>
+                    <span aria-hidden="true">🎤</span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <b style={{ display: "block", fontSize: 14 }}>{it.title}</b>
+                      {it.speakers && <small style={{ color: "var(--steel)" }}>{it.speakers}</small>}
+                    </span>
+                    <span className="label" style={{ color: "var(--signal-deep)" }}>
+                      {user ? "보기 →" : "회원 전용 →"}
+                    </span>
+                  </>
+                );
+                return embedded ? (
+                  <a key={it.id} className="iv-row" href={`/interviews/${it.id}`}
+                    target="_blank" rel="noreferrer">{inner}</a>
+                ) : (
+                  <Link key={it.id} className="iv-row" to={`/interviews/${it.id}`}>{inner}</Link>
+                );
+              })}
             </div>
           </div>
         )}

@@ -9,7 +9,6 @@ import NoticeCenter from "./components/NoticeCenter";
 const Search = lazy(() => import("./pages/Search"));
 const AdminPanel = lazy(() => import("./pages/AdminPanel"));
 const SchoolAdmin = lazy(() => import("./pages/SchoolAdmin"));
-const TeacherPanel = lazy(() => import("./pages/TeacherPanel"));
 const Quiz = lazy(() => import("./pages/Quiz"));
 // 일지 작성 기능은 diary.ggm.kr 로 분리했다. 이 경로는 안내 후 넘겨주기만 한다.
 const JournalMoved = lazy(() => import("./pages/JournalMoved"));
@@ -38,11 +37,18 @@ const Privacy = lazy(() => import("./pages/Privacy"));
 const Terms = lazy(() => import("./pages/Terms"));
 const Refund = lazy(() => import("./pages/Refund"));
 const Signup = lazy(() => import("./pages/Signup"));
+const SchoolAdmission = lazy(() => import("./pages/SchoolAdmission"));
+const SchoolAccountRequest = lazy(() => import("./pages/SchoolAccountRequest"));
+const Interviews = lazy(() => import("./pages/Interviews"));
+const InterviewPage = lazy(() => import("./pages/InterviewPage"));
+const AdminInterviews = lazy(() => import("./pages/AdminInterviews"));
+const Notices = lazy(() => import("./pages/Notices"));
 
 import FloatingButton from "./components/FloatingButton";
 import { Toaster } from "./toast";
 import FamilySites from "./components/FamilySites";
 import PhoneSetupNotice from "./components/PhoneSetupNotice";
+import PasswordChangeNotice from "./components/PasswordChangeNotice";
 import Login from "./pages/Login";
 import SchoolPage from "./pages/SchoolPage";
 import Home from "./pages/Home";
@@ -124,12 +130,17 @@ function Header() {
           {navOn("special") && (
             <NavLink to="/special" onClick={close}>온라인 직업계고 설명회</NavLink>
           )}
+          {navOn("interviews") && <NavLink to="/interviews" onClick={close}>학교 인터뷰</NavLink>}
           {showShorts && <NavLink to="/shorts" onClick={close}>숏츠</NavLink>}
           {navOn("quiz") && <NavLink to="/quiz" onClick={close}>진로 테스트</NavLink>}
+          {navOn("notices") && <NavLink to="/notices" onClick={close}>공지사항</NavLink>}
 
           {user?.role === "student" && <NavLink to="/favorites" onClick={close}>내 즐겨찾기</NavLink>}
-          {user?.role === "school" && <NavLink to="/my-school" onClick={close}>학교 관리</NavLink>}
-          {user?.role === "teacher" && <NavLink to="/teacher" onClick={close}>선생님</NavLink>}
+          {user?.role === "school" && (
+            <NavLink to="/my-school" onClick={close}>
+              {user.school_level === "middle" ? "진학 지원" : "학교 관리"}
+            </NavLink>
+          )}
           {/* 관리자 화면은 하나로 둔다. 영상·설명회·신청 관리는 그 안에서 간다 —
             * 관리 메뉴가 상단에 넷씩 늘어서면 정작 학생이 쓸 메뉴가 밀린다. */}
           {user?.role === "admin" && <NavLink to="/admin" onClick={close}>관리자</NavLink>}
@@ -162,6 +173,7 @@ export default function App() {
       <Header />
 
       <PhoneSetupNotice />
+      <PasswordChangeNotice />
 
       <main id="main">
       <Suspense fallback={<div className="wrap" style={{ padding: "60px 0" }}>
@@ -176,11 +188,13 @@ export default function App() {
         <Route path="/shorts/:id" element={<Shorts />} />
         <Route path="/videos/:id" element={<VideoPage />} />
         <Route path="/journal" element={<JournalMoved />} />
-        <Route path="/teacher" element={<Guard role="teacher"><TeacherPanel /></Guard>} />
+        {/* 선생님 화면은 없앴다(선생님 기능은 기록해 몫). 예전 주소로 오면 "*" 가 홈으로 보낸다. */}
         <Route path="/journal-share/:token" element={<JournalShare />} />
         <Route path="/schools/:id" element={<SchoolPage />} />
+        <Route path="/schools/:id/admission" element={<SchoolAdmission />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/school-account-request" element={<SchoolAccountRequest />} />
         <Route path="/change-phone" element={<ChangePhone />} />
         <Route path="/guardian-consent/:token" element={<GuardianConsent />} />
         <Route path="/find-account" element={<FindAccount />} />
@@ -193,6 +207,11 @@ export default function App() {
         <Route path="/admin/videos" element={<Guard role="admin"><AdminVideos /></Guard>} />
         <Route path="/briefing" element={<Briefing />} />
         <Route path="/special" element={<Special />} />
+        <Route path="/interviews" element={<Interviews />} />
+        <Route path="/interviews/:id" element={<InterviewPage />} />
+        <Route path="/notices" element={<Notices />} />
+        <Route path="/notices/:id" element={<Notices />} />
+        <Route path="/admin/interviews" element={<Guard role="admin"><AdminInterviews /></Guard>} />
         <Route path="/admin/briefing" element={<Guard role="admin"><AdminBriefing /></Guard>} />
         <Route path="/admin/graduate-video" element={<Guard role="admin"><AdminGraduateVideo /></Guard>} />
         <Route path="/admin/career-guide" element={<Guard role="admin"><AdminCareerGuide /></Guard>} />
@@ -227,6 +246,7 @@ export default function App() {
               </Link>
             </div>
           </div>
+          <VisitCounter />
           <div style={{ fontSize: 12, color: "var(--steel-light)", lineHeight: 1.7 }}>
             대표 {ORG.representative} · 사업자등록번호 {ORG.businessNumber}
             {ORG.mailOrderNumber && <> · 통신판매업 신고 {ORG.mailOrderNumber}</>}<br />
@@ -248,6 +268,42 @@ export default function App() {
           </div>
         </div>
       </footer>
+    </div>
+  );
+}
+
+const VISITOR_KEY = "udj_visitor_id";
+
+/** 브라우저마다 한 번 만든 임의 값. 누구인지는 알 수 없고, 하루에 같은
+ *  사람을 두 번 세지 않는 데만 쓴다. 저장이 막힌 브라우저(사생활 보호
+ *  모드)는 그 탭 동안만 쓰는 값을 만든다. */
+function visitorId() {
+  try {
+    let id = localStorage.getItem(VISITOR_KEY);
+    if (!id) {
+      id = (window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      localStorage.setItem(VISITOR_KEY, id);
+    }
+    return id;
+  } catch {
+    return `tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+}
+
+/** 푸터의 방문자 수. 사이트를 처음 열 때 한 번 센다(서버가 하루 한 번으로 거른다).
+ *  못 받아 오면 아무것도 안 띄운다 — 0 명이라고 보이는 것보다 낫다. */
+function VisitCounter() {
+  const [stats, setStats] = useState(null);
+  useEffect(() => {
+    api.visit(visitorId()).then(setStats)
+      .catch(() => api.visitStats().then(setStats).catch(() => {}));
+  }, []);
+  if (!stats) return null;
+  return (
+    <div className="visit-counter" aria-label="방문자 수">
+      <span>오늘 <b>{stats.today.toLocaleString()}</b>명</span>
+      <span className="visit-sep" aria-hidden="true" />
+      <span>누적 <b>{stats.total.toLocaleString()}</b>명</span>
     </div>
   );
 }

@@ -30,6 +30,11 @@ def chk(n, c, e=""):
     print(("  OK  " if c else "  FAIL") + f"  {n}" + (f"  {e}" if not c and e else ""))
 
 
+def is_stream(url, vid):
+    """회원에게 주는 잠긴 주소인가. 원본 /api/media 경로는 절대 안 나간다."""
+    return (url or "").startswith(f"/api/member-video/stream/{vid}?t=")
+
+
 db = SessionLocal()
 adm = User(email="a@t.kr", password_hash=hash_password("p1234567"),
            name="관리자", role=Role.admin)
@@ -158,9 +163,18 @@ chk("학생은 저장 못 함",
 r = c.put("/api/admin/briefing", headers=AH, json=body)
 chk("관리자 저장 200", r.status_code == 200, r.text)
 
-pub = c.get("/api/briefing").json()
+anon = c.get("/api/briefing").json()
+chk("비회원에게는 영상 주소가 없다", anon["video"]["file_url"] == "", str(anon["video"]))
+chk("비회원에게는 챕터 주소도 없다",
+    all(ch["source"] is None for ch in anon["chapters"]), str(anon["chapters"]))
+chk("잠긴 챕터라고 알려준다", all(ch["locked"] for ch in anon["chapters"]), str(anon["chapters"]))
+chk("로그인이 필요하다고 알려준다", anon["login_required"] is True, str(anon))
+chk("챕터 제목은 비회원도 본다", anon["chapters"][0]["title"] == "직업계고의 정체성")
+
+pub = c.get("/api/briefing", headers=SH).json()
+chk("회원은 로그인 필요 없음", pub["login_required"] is False, str(pub))
 chk("영상이 연결된다", pub["video"]["id"] == LF, str(pub["video"]))
-chk("영상 주소를 준다", pub["video"]["file_url"] == "/api/media/x.mp4", str(pub["video"]))
+chk("회원에게는 잠긴 주소를 준다", is_stream(pub["video"]["file_url"], LF), str(pub["video"]))
 chk("챕터 2개", len(pub["chapters"]) == 2, str(pub["chapters"]))
 chk("하위 항목이 남는다", len(pub["chapters"][1]["items"]) == 2, str(pub["chapters"][1]))
 chk("시작 초가 남는다", pub["chapters"][1]["start_sec"] == 764.5, str(pub["chapters"][1]))
@@ -273,17 +287,17 @@ body2 = {"video_id": LF, "headline": "", "intro": "", "chapters": [
 r = c.put("/api/admin/briefing", headers=AH, json=body2)
 chk("저장 200", r.status_code == 200, r.text)
 
-pub = c.get("/api/briefing").json()["chapters"]
-chk("기본 영상 챕터는 기본 파일", pub[0]["source"]["file_url"] == "/api/media/x.mp4",
+pub = c.get("/api/briefing", headers=SH).json()["chapters"]
+chk("기본 영상 챕터는 기본 파일", is_stream(pub[0]["source"]["file_url"], LF),
     str(pub[0]["source"]))
 chk("그 챕터는 적어 둔 초부터", pub[0]["source"]["start"] == 120, str(pub[0]["source"]))
-chk("제 영상 챕터는 제 파일", pub[1]["source"]["file_url"] == "/api/media/ch2.mp4",
+chk("제 영상 챕터는 제 파일", is_stream(pub[1]["source"]["file_url"], V2),
     str(pub[1]["source"]))
 chk("제 영상은 처음부터", pub[1]["source"]["start"] == 0, str(pub[1]["source"]))
 
 lessons = pub[1]["items"]
 chk("강의도 챕터 영상을 물려받는다",
-    lessons[0]["source"]["file_url"] == "/api/media/ch2.mp4", str(lessons[0]))
+    is_stream(lessons[0]["source"]["file_url"], V2), str(lessons[0]))
 chk("시각 없는 강의는 0초", lessons[0]["source"]["start"] == 0, str(lessons[0]["source"]))
 chk("시각을 적은 강의는 그 초", lessons[1]["source"]["start"] == 300, str(lessons[1]["source"]))
 
@@ -303,10 +317,10 @@ r = c.put("/api/admin/briefing", headers=AH, json={
     "video_id": None, "headline": "", "intro": "",
     "chapters": [{"title": "1강", "video_id": V2}]})
 chk("저장 200", r.status_code == 200, r.text)
-pub = c.get("/api/briefing").json()
+pub = c.get("/api/briefing", headers=SH).json()
 chk("기본 영상은 없음", pub["video"] is None, str(pub["video"]))
 chk("챕터는 제 영상으로 재생된다",
-    pub["chapters"][0]["source"]["file_url"] == "/api/media/ch2.mp4",
+    is_stream(pub["chapters"][0]["source"]["file_url"], V2),
     str(pub["chapters"][0]["source"]))
 
 print(f"\n===== {sum(OK)}/{len(OK)} 통과 =====")

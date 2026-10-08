@@ -89,16 +89,17 @@ function logout() {
 const MENU = {
   admin: [
     ['home', '한눈에'], ['tasks', '업무'], ['requests', '요청사항'],
-    ['attendance', '출근'], ['payroll', '급여'], ['visits', '방문 통계'], ['settlement', '정산'], ['users', '계정'],
+    ['attendance', '출근'], ['payroll', '급여'], ['visits', '방문 통계'], ['sales', '매출 통계'], ['settlement', '정산'], ['users', '계정'],
   ],
   staff: [['home', '한눈에'], ['tasks', '내 할 일'], ['myatt', '내 출근'], ['payroll', '급여명세서']],
-  partner: [['home', '한눈에'], ['visits', '방문 통계'], ['settlement', '정산'], ['requests', '요청사항']],
+  partner: [['home', '한눈에'], ['visits', '방문 통계'], ['sales', '매출 통계'], ['settlement', '정산'], ['requests', '요청사항']],
 };
 
 function drawNav() {
   // 협력사 중 정산을 받는 곳이 아니면 정산 메뉴를 숨긴다(서버도 막는다).
   const items = (MENU[state.me.role] || []).filter(([k]) =>
-    !(k === 'settlement' && state.me.role === 'partner' && !state.canSettle));
+    !(k === 'settlement' && state.me.role === 'partner' && !state.canSettle)
+    && !(k === 'sales' && state.me.role === 'partner' && !state.canSales));
   $('nav').innerHTML = items.map(([k, label]) =>
     `<button data-page="${k}" class="${state.page === k ? 'on' : ''}">${label}</button>`).join('');
   $('nav').querySelectorAll('button').forEach((b) => {
@@ -116,7 +117,7 @@ async function go(page) {
     const render = {
       home: pageHome, tasks: pageTasks, requests: pageRequests,
       attendance: pageAttendance, users: pageUsers, myatt: pageMyAttendance,
-      visits: pageVisits, settlement: pageSettlement, payroll: pagePayroll,
+      visits: pageVisits, settlement: pageSettlement, payroll: pagePayroll, sales: pageSales,
     }[page];
     await render();
   } catch (e) {
@@ -767,8 +768,12 @@ function openPw() {
 async function enter() {
   state.me = await api('/me');
   state.canSettle = false;
+  state.canSales = false;
   if (state.me.role === 'partner') {
     try { await api('/settlement/months?count=1'); state.canSettle = true; } catch (_) { /* 정산 대상 아님 */ }
+    // 매출 통계는 지정된 홈페이지가 있는 협력사면 볼 수 있다(그 사이트 매출만).
+    const d = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+    try { await api(`/sales?start=${d}&end=${d}`); state.canSales = true; } catch (_) { /* 지정 사이트 없음 */ }
   }
   $('loginView').hidden = true;
   $('appView').hidden = false;

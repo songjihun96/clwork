@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { GradePanel } from "./Subscribe";
 import { api } from "../api";
 import { useAuth } from "../auth";
 
@@ -180,29 +181,36 @@ export default function Account() {
               <h3>자기소개서 이용권</h3>
               {sub.active ? (
                 <>
-                  {/* 기간은 **학교 좌석**에 있다. 위쪽 expires_at 은 개인
-                      결제 시절의 잔재라 지금은 늘 비어 있고, 그대로 자르면
-                      화면에 "null까지"가 찍힌다(실제로 그렇게 나왔다). */}
-                  <Row label="이용 기간" value={(() => {
-                    const until = sub.school_seat?.expires_at || sub.expires_at;
-                    return until ? `${String(until).slice(0, 10)}까지` : "학교에 문의해 주세요";
-                  })()} />
-                  <p style={{ fontSize: 13.5, color: "var(--steel)", lineHeight: 1.7 }}>
-                    학교에서 받은 이용권입니다. 기간이나 배정은 학교가 정합니다.
-                  </p>
+                  <Row label="종류" value={{ school: "학교 이용권", individual: "개인 이용권",
+                    both: "학교 + 개인 이용권", trial: "첫 달 무료" }[sub.access_type] || "이용권"} />
+                  {sub.access_type === "trial" && sub.trial?.last_day && (
+                    <Row label="무료 이용" value={`${sub.trial.last_day}까지 (${sub.trial.days_left}일 남음)`} />
+                  )}
+                  {sub.school_seat?.expires_at && (
+                    <Row label="학교 이용권" value={`${String(sub.school_seat.expires_at).slice(0, 10)}까지`} />
+                  )}
+                  {sub.personal?.active && sub.personal.expires_at && (
+                    <Row label="개인 이용권" value={`${String(sub.personal.expires_at).slice(0, 10)}까지`} />
+                  )}
                 </>
               ) : (
                 <p style={{ fontSize: 14, color: "var(--steel)", marginTop: 0, lineHeight: 1.8 }}>
-                  아직 이용권이 없습니다. <b>이용권은 학교가 신청</b>하며,
-                  담당 선생님께 등록 코드를 받아 넣으면 바로 쓸 수 있습니다.
+                  아직 이용권이 없습니다. 담당 선생님께 받은 <b>학교 코드</b>를 넣거나
+                  <b> 개인 이용권</b>을 구매하면 바로 쓸 수 있습니다.
                   일지 작성과 선생님께 제출은 이용권 없이도 계속 무료입니다.
                 </p>
               )}
-              <Link className="btn btn-sm" to="/cover-letters" style={{ marginTop: 10 }}>
-                {sub.active ? "자기소개서 쓰러 가기" : "등록 코드 넣기"}
-              </Link>
+              <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                <Link className="btn btn-sm" to="/cover-letters">
+                  {sub.active ? "자기소개서 쓰러 가기" : "학교 코드 넣기"}
+                </Link>
+                <Link className="btn btn-sm btn-ghost" to="/subscribe">개인 이용권 · 구매 내역</Link>
+              </div>
             </div>
           )}
+
+          {/* 학교 소속이 아닌(개인) 학생만 학년을 직접 정한다. 해마다 저절로 오른다. */}
+          {isStudent && sub && !sub.school_managed && <GradePanel onSaved={() => load()} />}
 
         </>
       )}
@@ -383,7 +391,7 @@ function DeletePanel({ onDone, onError }) {
       <div className="notice notice-error" style={{ lineHeight: 1.8 }}>
         <b>탈퇴하면 이렇게 됩니다</b>
         <ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>
-          <li>작성한 일지·일기와 자기소개서가 모두 삭제됩니다.</li>
+          <li>작성한 학교생활일지·수업일지와 자기소개서가 모두 삭제됩니다.</li>
           <li>남은 이용권 기간이 있어도 환불되지 않습니다.</li>
           <li><b>우리동네 직업계고 계정도 함께 삭제</b>됩니다. 같은 계정이기 때문입니다.</li>
           <li>같은 이메일로 다시 가입할 수 있지만, 이전 기록은 복구되지 않습니다.</li>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import Modal from "./Modal";
+import CareerChatExport from "./CareerChatReport";
 
 /** 추천 학과 챗봇 — 진로 테스트 결과에서 연다.
  *
@@ -16,6 +17,10 @@ import Modal from "./Modal";
  *
  * 초봉이 아직 확인되지 않은 직업은 숫자를 지어내지 않고, 어디서 찾아보는지
  * 알려 준다(정보표가 비어 있으면 화면도, AI 도 같은 말을 한다).
+ *
+ * **대화는 부모(진로 테스트 결과)가 들고 있다**(log / setLog). 창을 닫았다
+ * 열어도 이어지고, 여러 계열에서 나눈 대화를 테스트 결과와 함께 한 장으로
+ * 정리해 이미지·PDF 로 내려받을 수 있다(CareerChatReport).
  */
 const QUICK = [
   ["easy", "어떤 일이에요?"],
@@ -65,11 +70,14 @@ function answerFromTable(kind, job, lookup) {
   return "";
 }
 
-export default function CareerChat({ group, onClose }) {
+export default function CareerChat({ group, onClose, log: outerLog, setLog: outerSetLog,
+  allLogs, result }) {
   const [guide, setGuide] = useState(null);
   const [error, setError] = useState("");
   const [job, setJob] = useState(null);
-  const [log, setLog] = useState([]);          // [{role, content}]
+  const [ownLog, setOwnLog] = useState([]);    // [{role, content, job?}]
+  const log = outerLog ?? ownLog;
+  const setLog = outerSetLog ?? setOwnLog;
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const endRef = useRef(null);
@@ -85,7 +93,7 @@ export default function CareerChat({ group, onClose }) {
   const push = (...items) => setLog((cur) => [...cur, ...items]);
 
   const quick = (kind, label) => {
-    push({ role: "user", content: `${job.name} — ${label}` },
+    push({ role: "user", content: `${job.name} — ${label}`, job: job.name },
       { role: "assistant", content: answerFromTable(kind, job, guide?.salary_lookup) });
   };
 
@@ -93,7 +101,7 @@ export default function CareerChat({ group, onClose }) {
     e?.preventDefault();
     const q = text.trim();
     if (!q || busy) return;
-    const next = [...log, { role: "user", content: q }];
+    const next = [...log, { role: "user", content: q, job: job?.name || "" }];
     setLog(next);
     setText("");
     setBusy(true);
@@ -176,6 +184,10 @@ export default function CareerChat({ group, onClose }) {
               지금은 직접 묻기를 쓸 수 없어요. 위 단추로 알아보세요.
             </p>
           )}
+
+          <div style={{ marginTop: 10 }}>
+            <CareerChatExport result={result} logs={allLogs || { [group]: log }} />
+          </div>
 
           <p style={{ fontSize: 11.5, color: "var(--steel-light)", margin: "10px 0 0", lineHeight: 1.6 }}>
             AI 도우미의 답은 참고용이에요. 자격증과 연봉은 선생님이나

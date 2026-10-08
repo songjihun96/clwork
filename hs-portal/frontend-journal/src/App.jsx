@@ -1,9 +1,12 @@
 import { lazy, Suspense } from "react";
-import { Link, NavLink, Navigate, Route, Routes } from "react-router-dom";
+import { Link, NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./auth";
 import FamilySites from "./components/FamilySites";
+import TrialBanner from "./components/TrialBanner";
 
 const Login = lazy(() => import("./pages/Login"));
+const Subscribe = lazy(() => import("./pages/Subscribe"));
+const PaymentResult = lazy(() => import("./pages/PaymentResult"));
 const Home = lazy(() => import("./pages/Home"));
 const Journals = lazy(() => import("./pages/Journals"));
 const JournalEdit = lazy(() => import("./pages/JournalEdit"));
@@ -23,6 +26,17 @@ const TeacherObservations = lazy(() => import("./pages/TeacherObservations"));
 const Portfolio = lazy(() => import("./pages/Portfolio"));
 const PortfolioEditor = lazy(() => import("./pages/PortfolioEditor"));
 const SharedPortfolio = lazy(() => import("./pages/SharedPortfolio"));
+const Landing = lazy(() => import("./pages/Landing"));
+const Notices = lazy(() => import("./pages/Notices"));
+
+// 첫 화면: 로그인 전에는 서비스 소개(랜딩), 학생은 내 홈, 그 밖의 역할은 그 역할의 첫 화면.
+function HomeGate() {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="wrap page"><p>불러오는 중…</p></div>;
+  if (!user) return <Landing />;
+  if (user.role !== "student") return <Navigate to={homeFor(user)} replace />;
+  return <Home />;
+}
 
 // 역할별로 쓸 수 있는 화면이 다르다. 서버의 권한 규칙과 정확히 맞춘다.
 //   학생   : 일지 작성 · 포트폴리오(자기소개서는 예전 기능으로 남겨 둠)
@@ -45,8 +59,13 @@ export function homeFor(user) {
 // 로그인이 필요한 화면을 감싼다. role 을 주면 그 역할만 통과시킨다.
 function Guard({ children, role }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
   if (loading) return <div className="wrap page"><p>불러오는 중…</p></div>;
-  if (!user) return <Navigate to="/login" replace />;
+  // 로그인하고 나면 보던 화면(예: 이용권 구매)으로 돌아오게 주소를 들고 간다.
+  if (!user) {
+    return <Navigate replace
+      to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} />;
+  }
   // 권한이 없으면 오류 대신 그 역할이 쓸 수 있는 화면으로 보낸다.
   const allowed = Array.isArray(role) ? role : role ? [role] : null;
   if (allowed && !allowed.includes(user.role)) return <Navigate to={homeFor(user)} replace />;
@@ -55,6 +74,8 @@ function Guard({ children, role }) {
 
 export default function App() {
   const { user, logout } = useAuth();
+  const location = useLocation();
+  const onLanding = !user && location.pathname === "/";
   const isStudent = user && user.role === "student";
   const isTeacher = canViewStudentRecords(user);
 
@@ -125,15 +146,29 @@ export default function App() {
                 관리
               </NavLink>
             )}
+            {/* 로그인 전 첫 화면에서는 소개 구역으로 가는 길을 둔다 */}
+            {onLanding && (
+              <>
+                <a href="#how" className="nav-anchor">이용 방법</a>
+                <a href="#diaries" className="nav-anchor">두 가지 일지</a>
+                <a href="#resume" className="nav-anchor">자기소개서</a>
+              </>
+            )}
+            <NavLink to="/notices" className={({ isActive }) => (isActive ? "on" : "")}>
+              공지사항
+            </NavLink>
             {user && (
               <a href="#logout" onClick={(e) => { e.preventDefault(); logout(); }}>
                 로그아웃
               </a>
             )}
             {!user && <NavLink to="/login">로그인</NavLink>}
+            {!user && <Link to="/signup" className="btn btn-primary btn-sm nav-start">시작하기</Link>}
           </nav>
         </div>
       </header>
+
+      {isStudent && <TrialBanner />}
 
       <main>
         <Suspense fallback={<div className="wrap page"><p>불러오는 중…</p></div>}>
@@ -146,7 +181,9 @@ export default function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/admin" element={<Guard role="admin"><Admin /></Guard>} />
-            <Route path="/" element={<Guard role="student"><Home /></Guard>} />
+            <Route path="/" element={<HomeGate />} />
+            <Route path="/notices" element={<Notices />} />
+            <Route path="/notices/:id" element={<Notices />} />
             <Route path="/journals" element={<Guard role="student"><Journals /></Guard>} />
             <Route path="/journals/new" element={<Guard role="student"><JournalEdit /></Guard>} />
             <Route path="/journals/:id" element={<Guard role="student"><JournalEdit /></Guard>} />
@@ -160,11 +197,11 @@ export default function App() {
             <Route path="/portfolio/:id" element={<Guard role="student"><PortfolioEditor /></Guard>} />
             {/* 개인 결제는 없어졌다. 예전 주소는 자기소개서 화면으로 보낸다.
                 거기서 학교에서 받은 등록 코드를 넣는다. */}
-            <Route path="/subscribe" element={<Navigate to="/cover-letters" replace />} />
+            <Route path="/subscribe" element={<Guard role="student"><Subscribe /></Guard>} />
             {/* 이용권은 학교가 산다. 학생에게는 신청 내역이 없다.
                 예전에 개인 결제한 계정의 환불은 '내 정보'에서 처리한다.
                 옛 주소로 들어오면 그쪽으로 보낸다. */}
-            <Route path="/orders" element={<Navigate to="/cover-letters" replace />} />
+            <Route path="/orders" element={<Navigate to="/subscribe" replace />} />
             <Route path="/school"
               element={<Guard role={["school", "admin"]}><SchoolHome /></Guard>} />
             {/* 이용권은 학교가 산다. 학교 계정만 들어갈 수 있다. */}
@@ -174,7 +211,7 @@ export default function App() {
                 예전엔 '이용권' 메뉴 안 탭으로 섞여 있어 찾기 어려웠다. */}
             <Route path="/school/classes"
               element={<Guard role={["school", "admin"]}><SchoolClasses /></Guard>} />
-            <Route path="/payment/result" element={<Navigate to="/cover-letters" replace />} />
+            <Route path="/payment/result" element={<Guard role="student"><PaymentResult /></Guard>} />
             <Route path="/unsupported" element={<Guard><NotForRole /></Guard>} />
             {/* 예전 주소('학생 기록'과 'AI 생기부'가 메뉴 두 개로 나뉘어 있던
                 시절의 링크) 호환용. 지금은 /students 하나로 합쳤다. */}

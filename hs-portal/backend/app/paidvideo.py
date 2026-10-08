@@ -162,6 +162,9 @@ _CACHE_TTL = 30.0
 
 def invalidate_protected() -> None:
     _CACHE["names"] = None
+    # 회원 영상 목록은 "파는 영상을 뺀 것"이라 이쪽이 바뀌면 같이 바뀐다.
+    from . import membervideo
+    membervideo.invalidate()
 
 
 def protected_filenames(db: Session) -> set:

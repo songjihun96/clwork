@@ -1,11 +1,17 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import SchoolAccountNotice from "../components/SchoolAccountNotice";
 import { useAuth } from "../auth";
 import PhoneVerify from "../components/PhoneVerify";
 
 export default function Signup() {
   const { signup } = useAuth();
   const navigate = useNavigate();
+  // 회원만 보는 영상 등에서 가입하러 왔으면, 끝나고 그 자리로 돌려보낸다.
+  // 우리 사이트 안 경로만 받는다(남이 준 주소로 밖에 내보내지 않는다).
+  const [search] = useSearchParams();
+  const rawNext = search.get("next") || "";
+  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "";
   const [form, setForm] = useState({
     name: "", email: "", phone: "", password: "", confirm: "",
     birth: "", guardianEmail: "",
@@ -85,7 +91,7 @@ export default function Signup() {
         setPending(res);
         return;
       }
-      navigate("/");
+      navigate(next || "/");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -119,7 +125,12 @@ export default function Signup() {
   return (
     <div className="wrap" style={{ maxWidth: 400, padding: "56px 0" }}>
       <span className="label">학생 회원가입</span>
-      <h1 style={{ fontSize: 26, margin: "8px 0 22px" }}>학교를 저장하고 비교하세요</h1>
+      <h1 style={{ fontSize: 26, margin: "8px 0 8px" }}>학교를 저장하고 비교하세요</h1>
+      <p style={{ fontSize: 13.5, color: "var(--steel)", margin: "0 0 14px", lineHeight: 1.7 }}>
+        학생·학부모가 쓰는 <b>개인 회원가입</b>입니다.
+      </p>
+      {/* 이 화면은 학생용이다. 학교 관계자가 잘못 들어오는 일이 잦아, 양식보다 먼저 길을 알린다. */}
+      <SchoolAccountNotice style={{ marginBottom: 22 }} />
 
       <form onSubmit={submit} style={{ display: "grid", gap: 14 }}>
         <div className="field">
@@ -213,8 +224,9 @@ export default function Signup() {
       </form>
 
       <p style={{ fontSize: 13.5, color: "var(--steel)", marginTop: 18 }}>
-        이미 계정이 있다면 <Link to="/login" style={{ color: "var(--ink)", fontWeight: 600 }}>로그인</Link>
+        이미 계정이 있다면 <Link to={next ? `/login?next=${encodeURIComponent(next)}` : "/login"} style={{ color: "var(--ink)", fontWeight: 600 }}>로그인</Link>
       </p>
+
     </div>
   );
 }

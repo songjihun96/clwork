@@ -6,6 +6,10 @@ import {
 } from "recharts";
 import { api, PLAN_LABEL } from "../api";
 import { ddayClass, ddayText } from "../dday";
+import AdmissionManager from "../components/AdmissionManager";
+import MiddleSchoolHome from "../components/MiddleSchoolHome";
+import NoticeSettings from "../components/NoticeSettings";
+import { useAuth } from "../auth";
 import { errMsg, okMsg } from "../toast";
 
 const STATUS_LABEL = { pending: "승인 대기", approved: "승인됨", rejected: "반려됨" };
@@ -633,10 +637,10 @@ function EventsTab({ plan, events, reload }) {
   );
 }
 
-function PlanTab({ profile, plans, orders, reload }) {
+function PlanTab({ profile, plans, orders, reload, initialPlan }) {
   const myPerks = profile.my_perks || [];
   const baseFeatures = profile.base_features || [];
-  const [selected, setSelected] = useState("premium");
+  const [selected, setSelected] = useState(initialPlan || "premium");
   const [months, setMonths] = useState(3);
   const [msg, setMsg] = useState(null);
   const [tax, setTax] = useState({ email: "", manager: "" });
@@ -914,8 +918,18 @@ function PlanTab({ profile, plans, orders, reload }) {
   );
 }
 
+/** 학교 계정 화면. 중학교는 '직업계고 진학 지원' 화면으로 나뉜다(서버도 고등학교
+ *  전용 기능을 막는다). 고등학교는 예전 학교 관리 그대로 + 공지 알림 설정. */
 export default function SchoolAdmin() {
+  const { user } = useAuth();
+  if (user?.school_level === "middle") return <MiddleSchoolHome />;
+  return <HighSchoolAdmin />;
+}
+
+function HighSchoolAdmin() {
   const [tab, setTab] = useState("stats");
+  // 진학정보 안내에서 'Platinum 시작하기'를 누르면 플랜 신청에 플래티넘을 골라 둔다.
+  const [planPick, setPlanPick] = useState(null);
   const [profile, setProfile] = useState(null);
   const [stats, setStats] = useState(null);
   const [events, setEvents] = useState([]);
@@ -953,14 +967,24 @@ export default function SchoolAdmin() {
           문의 관리{unanswered > 0 ? ` (${unanswered})` : ""}
         </button>
         <button className={`tab ${tab === "events" ? "active" : ""}`} onClick={() => setTab("events")}>학교일정등록</button>
-        <button className={`tab ${tab === "plan" ? "active" : ""}`} onClick={() => setTab("plan")}>노출 플랜</button>
+        <button className={`tab ${tab === "admission" ? "active" : ""}`} onClick={() => setTab("admission")}>취업/진학 정보</button>
+        <button className={`tab ${tab === "plan" ? "active" : ""}`} onClick={() => { setPlanPick(null); setTab("plan"); }}>노출 플랜</button>
+        <button className={`tab ${tab === "notify" ? "active" : ""}`} onClick={() => setTab("notify")}>공지 알림 설정</button>
       </div>
+
+      {tab === "notify" && <div style={{ marginTop: 16 }}><NoticeSettings /></div>}
 
       {tab === "stats" && <StatsTab stats={stats} />}
       {tab === "profile" && <ProfileTab profile={profile} reload={load} />}
       {tab === "inquiries" && <InquiriesTab inquiries={inquiries} profile={profile} reload={load} />}
       {tab === "events" && <EventsTab plan={profile.plan} events={events} reload={load} />}
-      {tab === "plan" && <PlanTab profile={profile} plans={plans} orders={orders} reload={load} />}
+      {tab === "admission" && (
+        <AdmissionManager onUpgrade={() => { setPlanPick("platinum"); setTab("plan"); }} />
+      )}
+      {tab === "plan" && (
+        <PlanTab key={planPick || "plan"} profile={profile} plans={plans} orders={orders}
+          reload={load} initialPlan={planPick} />
+      )}
     </div>
   );
 }

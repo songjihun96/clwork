@@ -34,6 +34,7 @@ from typing import List, Optional
 from fastapi import (APIRouter, BackgroundTasks, Depends, File, Form,
                      HTTPException, Query, UploadFile)
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from . import fingerprint as fp_mod
@@ -42,7 +43,7 @@ from . import shorts_match
 from .auth import get_current_user_optional, require_admin
 from .database import get_db
 from .models import (MATCH_STATUSES, Setting, ShortsMatch, User, Video,
-                     VideoFingerprint)
+                     VideoChapter, VideoFingerprint)
 
 router = APIRouter(prefix="/api", tags=["videos"])
 
@@ -121,10 +122,12 @@ def video_out(v: Video, db: Optional[Session] = None, detail: bool = False) -> d
         "file_url": v.file_path or "", "thumbnail": v.thumbnail or "",
         "duration_sec": v.duration_sec, "category": v.category or "",
         "is_public": bool(v.is_public), "view_count": v.view_count or 0,
+        "is_lecture": bool(getattr(v, "is_lecture", False)),
         "created_at": v.created_at,
     }
     if not detail or db is None:
         return out
+    out["chapters"] = chapters_out(db, v)
 
     fpr = db.query(VideoFingerprint).filter(
         VideoFingerprint.video_id == v.id).first()
@@ -144,6 +147,40 @@ def video_out(v: Video, db: Optional[Session] = None, detail: bool = False) -> d
         out["shorts"] = [
             {**video_out(sv), "match": match_out(m, db)} for m, sv in rows
         ]
+    return out
+
+
+def for_admin(out, user: User):
+    """관리자 화면에 줄 모양. 파일 주소에 관리자 티켓을 붙인다.
+
+    파는 영상·회원 영상의 파일은 /api/media 에서 잠겨 있어서, 그대로 주면
+    영상 관리 화면의 미리보기가 403 으로 까맣게 나온다.
+    """
+    from . import membervideo
+    if isinstance(out, list):
+        return [for_admin(o, user) for o in out]
+    if isinstance(out, dict):
+        if out.get("file_url"):
+            out["file_url"] = membervideo.admin_media_url(out["file_url"], user)
+        for s in out.get("shorts") or []:
+            if isinstance(s, dict) and s.get("file_url"):
+                s["file_url"] = membervideo.admin_media_url(s["file_url"], user)
+    return out
+
+
+def chapters_out(db: Session, v: Video) -> list:
+    """챕터 목록. 끝 시각이 비어 있으면 다음 챕터 시작(마지막은 영상 끝)으로 채워 준다 —
+    화면이 "지금 어느 챕터인가"를 셀 때 매번 따지지 않게 서버가 한 번에 정한다."""
+    rows = (db.query(VideoChapter).filter(VideoChapter.video_id == v.id)
+            .order_by(VideoChapter.display_order.asc(), VideoChapter.start_sec.asc(),
+                      VideoChapter.id.asc()).all())
+    out = []
+    for i, c in enumerate(rows):
+        nxt = rows[i + 1].start_sec if i + 1 < len(rows) else None
+        end = c.end_sec if c.end_sec is not None else (nxt if nxt is not None else v.duration_sec)
+        out.append({"id": c.id, "title": c.title, "start_sec": c.start_sec,
+                    "end_sec": c.end_sec, "effective_end_sec": end,
+                    "display_order": c.display_order})
     return out
 
 
@@ -184,6 +221,22 @@ class VideoPatch(BaseModel):
     is_public: Optional[bool] = None
     thumbnail: Optional[str] = None
     longform_id: Optional[int] = None
+    is_lecture: Optional[bool] = None
+
+
+class ChapterIn(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    start_sec: float = Field(ge=0)
+    end_sec: Optional[float] = Field(default=None, ge=0)
+    display_order: Optional[int] = None
+
+
+class ChaptersIn(BaseModel):
+    chapters: List[ChapterIn] = Field(default_factory=list)
+
+
+class ChapterOrderIn(BaseModel):
+    ids: List[int]
 
 
 class MatchEditIn(BaseModel):
@@ -401,7 +454,7 @@ def create_video(payload: VideoIn, db: Session = Depends(get_db),
         _ensure_match(db, v, payload.longform_id)
     db.commit()
     db.refresh(v)
-    return video_out(v, db, detail=True)
+    return for_admin(video_out(v, db, detail=True), user)
 
 
 @router.get("/admin/videos")
@@ -434,13 +487,13 @@ def list_videos_admin(kind: Optional[str] = Query(None, pattern="^(longform|shor
         for o in out:
             if o["kind"] == "shorts":
                 o["link"] = links.get(o["id"])
-    return out
+    return for_admin(out, user)
 
 
 @router.get("/admin/videos/{video_id}")
 def get_video_admin(video_id: int, db: Session = Depends(get_db),
                     user: User = Depends(require_admin)):
-    return video_out(_get_video(db, video_id), db, detail=True)
+    return for_admin(video_out(_get_video(db, video_id), db, detail=True), user)
 
 
 @router.patch("/admin/videos/{video_id}")
@@ -448,6 +501,8 @@ def update_video(video_id: int, payload: VideoPatch, db: Session = Depends(get_d
                  user: User = Depends(require_admin)):
     v = _get_video(db, video_id)
     data = payload.model_dump(exclude_unset=True)
+    if data.get("is_lecture") and v.kind != "longform":
+        raise HTTPException(status_code=400, detail="설명회 특강으로는 롱폼만 올릴 수 있습니다.")
     relink = "longform_id" in data
     longform_id = data.pop("longform_id", None)
     for field, value in data.items():
@@ -462,7 +517,9 @@ def update_video(video_id: int, payload: VideoPatch, db: Session = Depends(get_d
                 ShortsMatch.shorts_id == v.id).delete(synchronize_session=False)
     db.commit()
     db.refresh(v)
-    return video_out(v, db, detail=True)
+    if "is_lecture" in data:
+        _forget_protected()      # 특강으로 올리거나 내리면 회원 전용 목록이 바뀐다
+    return for_admin(video_out(v, db, detail=True), user)
 
 
 def _purge_video(db: Session, v: Video) -> str:
@@ -478,6 +535,8 @@ def _purge_video(db: Session, v: Video) -> str:
     ).delete(synchronize_session=False)
     db.query(VideoFingerprint).filter(
         VideoFingerprint.video_id == v.id).delete(synchronize_session=False)
+    db.query(VideoChapter).filter(
+        VideoChapter.video_id == v.id).delete(synchronize_session=False)
     path = _abs_path(v.file_path)
     db.delete(v)
     _forget_protected()
@@ -569,7 +628,9 @@ def upload_video_file(video_id: int, background: BackgroundTasks,
     if fp_mod.available():
         background.add_task(run_fingerprint, v.id)
 
-    return {"ok": True, "file_url": v.file_path, "size_bytes": written,
+    from . import membervideo
+    return {"ok": True, "file_url": membervideo.admin_media_url(v.file_path, user),
+            "size_bytes": written,
             "duration_sec": v.duration_sec,
             "fingerprint": fp_mod.available(),
             "note": "" if media_mod.have_ffprobe() else
@@ -792,17 +853,65 @@ def list_videos(kind: Optional[str] = Query(None, pattern="^(longform|shorts)$")
     q = db.query(Video).filter(Video.is_public.is_(True))
     if kind:
         q = q.filter(Video.kind == kind)
-    return [video_out(v) for v in q.order_by(Video.created_at.desc()).all()]
+    return [_member_gate(db, video_out(v), user)
+            for v in q.order_by(Video.created_at.desc()).all()]
+
+
+def _member_gate(db: Session, out: dict, user: Optional[User]) -> dict:
+    """회원만 보는 영상(설명회·학교 인터뷰)이면 원본 주소를 바꾼다.
+
+    로그인했으면 티켓이 붙은 주소, 안 했으면 빈 주소 + login_required.
+    원본 /api/media 주소는 어차피 403 이라 그대로 두면 까만 화면만 나온다.
+    """
+    from . import membervideo
+    if not out.get("file_url") or not membervideo.is_member_video(db, out["id"]):
+        return out
+    out["members_only"] = True
+    if user is None:
+        out["file_url"] = ""
+        out["login_required"] = True
+    else:
+        out["file_url"] = membervideo.stream_url(user, out["id"])
+    return out
+
+
+@router.get("/lectures")
+def list_lectures(db: Session = Depends(get_db)):
+    """온라인 직업계고 설명회의 특강 카드. 재생 주소는 주지 않는다(상세에서 회원에게만).
+
+    숏츠 전체 공개 스위치와 상관없이 보인다 — 특강은 숏츠와 따로 여는 것이다.
+    """
+    rows = (db.query(Video)
+            .filter(Video.is_lecture.is_(True), Video.is_public.is_(True),
+                    Video.kind == "longform")
+            .order_by(Video.created_at.desc()).all())
+    counts = dict(db.query(VideoChapter.video_id, func.count(VideoChapter.id))
+                  .filter(VideoChapter.video_id.in_([v.id for v in rows] or [0]))
+                  .group_by(VideoChapter.video_id).all())
+    return [{
+        "id": v.id, "title": v.title, "description": v.description or "",
+        "thumbnail": v.thumbnail or "", "category": v.category or "",
+        "duration_sec": v.duration_sec, "created_at": v.created_at,
+        "chapter_count": int(counts.get(v.id, 0)), "has_file": bool(v.file_path),
+        "members_only": True,
+    } for v in rows]
+
+
+def _guard_video(db: Session, v: Optional[Video], user: Optional[User]) -> None:
+    """상세·조회수: 공개된 특강은 늘 열리고, 나머지는 예전처럼 공개 스위치를 따른다."""
+    if v is not None and v.is_public and getattr(v, "is_lecture", False):
+        return
+    _guard_public(db, user)
 
 
 @router.get("/videos/{video_id}")
 def get_video(video_id: int, db: Session = Depends(get_db),
               user: Optional[User] = Depends(get_current_user_optional)):
-    _guard_public(db, user)
     v = db.get(Video, video_id)
+    _guard_video(db, v, user)
     if not v or not v.is_public:
         raise HTTPException(status_code=404, detail="영상을 찾을 수 없습니다.")
-    out = video_out(v, db, detail=True)
+    out = _member_gate(db, video_out(v, db, detail=True), user)
 
     if v.kind == "shorts":
         out.pop("match", None)
@@ -828,9 +937,132 @@ def get_video(video_id: int, db: Session = Depends(get_db),
 @router.post("/videos/{video_id}/view")
 def count_view(video_id: int, db: Session = Depends(get_db),
                user: Optional[User] = Depends(get_current_user_optional)):
-    _guard_public(db, user)
     v = db.get(Video, video_id)
+    _guard_video(db, v, user)
     if v and v.is_public:
         v.view_count = (v.view_count or 0) + 1
         db.commit()
     return {"ok": True}
+# ================================================================
+# 챕터 관리 (관리자)
+# ================================================================
+MAX_CHAPTERS = 60
+
+
+def _longform_or_404(db: Session, video_id: int) -> Video:
+    v = db.get(Video, video_id)
+    if not v:
+        raise HTTPException(status_code=404, detail="영상을 찾을 수 없습니다.")
+    if v.kind != "longform":
+        raise HTTPException(status_code=400, detail="챕터는 롱폼에만 나눌 수 있습니다.")
+    return v
+
+
+def _check_chapter(v: Video, title: str, start: float, end: Optional[float]) -> None:
+    """시각이 말이 되는지 본다. 틀린 챕터는 누르면 엉뚱한 곳으로 가서 더 나쁘다."""
+    if not (title or "").strip():
+        raise HTTPException(status_code=400, detail="챕터 제목을 적어 주세요.")
+    if end is not None and end <= start:
+        raise HTTPException(status_code=400,
+                            detail=f"'{title}' 의 끝 시각이 시작 시각보다 뒤여야 합니다.")
+    dur = v.duration_sec
+    if dur:
+        # 길이를 잰 값은 소수점 아래가 조금씩 다르다. 1초는 봐준다.
+        if start >= dur:
+            raise HTTPException(status_code=400,
+                                detail=f"'{title}' 의 시작 시각이 영상 길이를 넘습니다.")
+        if end is not None and end > dur + 1:
+            raise HTTPException(status_code=400,
+                                detail=f"'{title}' 의 끝 시각이 영상 길이를 넘습니다.")
+
+
+@router.get("/admin/videos/{video_id}/chapters")
+def admin_list_chapters(video_id: int, db: Session = Depends(get_db),
+                        user: User = Depends(require_admin)):
+    return chapters_out(db, _longform_or_404(db, video_id))
+
+
+@router.put("/admin/videos/{video_id}/chapters")
+def admin_replace_chapters(video_id: int, payload: ChaptersIn, db: Session = Depends(get_db),
+                           user: User = Depends(require_admin)):
+    """챕터 목록을 통째로 바꾼다. 화면의 편집기가 추가·수정·삭제·순서를 한 번에 저장한다.
+    보낸 순서가 곧 표시 순서다."""
+    v = _longform_or_404(db, video_id)
+    if len(payload.chapters) > MAX_CHAPTERS:
+        raise HTTPException(status_code=400, detail=f"챕터는 {MAX_CHAPTERS}개까지 둘 수 있습니다.")
+    for ch in payload.chapters:
+        _check_chapter(v, ch.title.strip(), ch.start_sec, ch.end_sec)
+    db.query(VideoChapter).filter(VideoChapter.video_id == v.id).delete(synchronize_session=False)
+    for i, ch in enumerate(payload.chapters):
+        db.add(VideoChapter(video_id=v.id, title=ch.title.strip(), start_sec=round(ch.start_sec, 2),
+                            end_sec=None if ch.end_sec is None else round(ch.end_sec, 2),
+                            display_order=i))
+    db.commit()
+    return chapters_out(db, v)
+
+
+@router.post("/admin/videos/{video_id}/chapters")
+def admin_add_chapter(video_id: int, payload: ChapterIn, db: Session = Depends(get_db),
+                      user: User = Depends(require_admin)):
+    v = _longform_or_404(db, video_id)
+    _check_chapter(v, payload.title.strip(), payload.start_sec, payload.end_sec)
+    count = db.query(VideoChapter).filter(VideoChapter.video_id == v.id).count()
+    if count >= MAX_CHAPTERS:
+        raise HTTPException(status_code=400, detail=f"챕터는 {MAX_CHAPTERS}개까지 둘 수 있습니다.")
+    order = payload.display_order if payload.display_order is not None else count
+    db.add(VideoChapter(video_id=v.id, title=payload.title.strip(),
+                        start_sec=round(payload.start_sec, 2),
+                        end_sec=None if payload.end_sec is None else round(payload.end_sec, 2),
+                        display_order=order))
+    db.commit()
+    return chapters_out(db, v)
+
+
+@router.patch("/admin/video-chapters/{chapter_id}")
+def admin_update_chapter(chapter_id: int, payload: ChapterIn, db: Session = Depends(get_db),
+                         user: User = Depends(require_admin)):
+    c = db.get(VideoChapter, chapter_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="챕터를 찾을 수 없습니다.")
+    v = _longform_or_404(db, c.video_id)
+    _check_chapter(v, payload.title.strip(), payload.start_sec, payload.end_sec)
+    c.title = payload.title.strip()
+    c.start_sec = round(payload.start_sec, 2)
+    c.end_sec = None if payload.end_sec is None else round(payload.end_sec, 2)
+    if payload.display_order is not None:
+        c.display_order = payload.display_order
+    db.commit()
+    return chapters_out(db, v)
+
+
+@router.delete("/admin/video-chapters/{chapter_id}")
+def admin_delete_chapter(chapter_id: int, db: Session = Depends(get_db),
+                         user: User = Depends(require_admin)):
+    c = db.get(VideoChapter, chapter_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="챕터를 찾을 수 없습니다.")
+    v = db.get(Video, c.video_id)
+    db.delete(c)
+    db.commit()
+    return chapters_out(db, v) if v else []
+
+
+@router.put("/admin/videos/{video_id}/chapters/order")
+def admin_reorder_chapters(video_id: int, payload: ChapterOrderIn, db: Session = Depends(get_db),
+                           user: User = Depends(require_admin)):
+    """순서만 바꾼다. 이 영상의 챕터 번호를 빠짐없이 보내야 한다."""
+    v = _longform_or_404(db, video_id)
+    rows = {c.id: c for c in db.query(VideoChapter).filter(VideoChapter.video_id == v.id).all()}
+    if sorted(payload.ids) != sorted(rows):
+        raise HTTPException(status_code=400, detail="이 영상의 챕터를 빠짐없이 보내 주세요.")
+    for i, cid in enumerate(payload.ids):
+        rows[cid].display_order = i
+    db.commit()
+    return chapters_out(db, v)
+
+
+@router.post("/admin/videos/thumbnail")
+def upload_video_thumbnail(file: UploadFile = File(...), user: User = Depends(require_admin)):
+    """특강 카드에 쓸 썸네일 이미지."""
+    from .main import _save_uploaded_image
+    return {"url": _save_uploaded_image(file, prefix="video")}

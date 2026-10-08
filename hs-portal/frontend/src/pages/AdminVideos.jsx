@@ -682,17 +682,35 @@ function ShortsItem({ shorts, longform, longforms, open, onToggle,
 
 /** 영상 하나의 기본 정보 + 파일 + 소리 지문 상태 */
 function VideoEditor({ video, onChanged, setMsg, stt }) {
-  const [form, setForm] = useState({
-    title: video.title, description: video.description || "",
-    is_public: video.is_public,
+  const isLong = video.kind === "longform";
+  const pick = (v) => ({
+    title: v.title, description: v.description || "", is_public: v.is_public,
+    ...(v.kind === "longform"
+      ? { is_lecture: !!v.is_lecture, category: v.category || "", thumbnail: v.thumbnail || "" }
+      : {}),
   });
+  const [form, setForm] = useState(pick(video));
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(null);   // {percent, loaded, total, processing}
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    setForm({ title: video.title, description: video.description || "", is_public: video.is_public });
-  }, [video.id, video.title, video.description, video.is_public]);
+    setForm(pick(video));
+  }, [video.id, video.title, video.description, video.is_public,
+    video.is_lecture, video.category, video.thumbnail]);
+
+  const pickThumb = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const r = await api.uploadVideoThumbnail(file);
+      setForm((f) => ({ ...f, thumbnail: r.url }));
+      setMsg(okMsg("썸네일을 올렸습니다. 정보 저장을 눌러야 반영됩니다."));
+    } catch (err) {
+      setMsg(errMsg(err.message));
+    }
+  };
 
   const save = async () => {
     setBusy(true);
@@ -738,14 +756,54 @@ function VideoEditor({ video, onChanged, setMsg, stt }) {
         <textarea className="textarea" rows={2} value={form.description}
           onChange={(e) => setForm({ ...form, description: e.target.value })} />
       </div>
+      {isLong && (
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+          <div className="field" style={{ margin: 0 }}>
+            <label className="label">분류 (특강 카드에 보임)</label>
+            <input className="input" value={form.category} maxLength={40} placeholder="예) 입학 안내"
+              onChange={(e) => setForm({ ...form, category: e.target.value })} style={{ width: 200 }} />
+          </div>
+          <div className="field" style={{ margin: 0 }}>
+            <label className="label">썸네일</label>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {form.thumbnail && (
+                <img src={form.thumbnail} alt="" style={{ width: 96, aspectRatio: "16/9",
+                  objectFit: "cover", borderRadius: 6 }} />
+              )}
+              <label className="btn btn-ghost btn-sm" style={{ cursor: "pointer" }}>
+                {form.thumbnail ? "바꾸기" : "이미지 올리기"}
+                <input type="file" accept="image/png,image/jpeg,image/webp,image/gif"
+                  onChange={pickThumb} style={{ display: "none" }} />
+              </label>
+              {form.thumbnail && (
+                <button type="button" className="btn btn-ghost btn-sm"
+                  onClick={() => setForm({ ...form, thumbnail: "" })}>빼기</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13.5 }}>
           <input type="checkbox" checked={form.is_public}
             onChange={(e) => setForm({ ...form, is_public: e.target.checked })} />
           공개 (학생에게 보임)
         </label>
+        {isLong && (
+          <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13.5 }}
+            title="온라인 직업계고 설명회 화면에 특강 카드로 올립니다. 회원만 재생할 수 있습니다.">
+            <input type="checkbox" checked={form.is_lecture}
+              onChange={(e) => setForm({ ...form, is_lecture: e.target.checked })} />
+            설명회 특강 카드로 올리기 (회원 전용)
+          </label>
+        )}
         <button className="btn btn-sm" onClick={save} disabled={busy}>정보 저장</button>
       </div>
+      {isLong && form.is_lecture && !form.is_public && (
+        <p style={{ fontSize: 12, color: "var(--color-attention)", margin: "-4px 0 0" }}>
+          공개를 켜야 설명회 화면에 카드가 나옵니다.
+        </p>
+      )}
 
       <div className="field">
         <label className="label">영상 파일</label>
@@ -794,6 +852,141 @@ function VideoEditor({ video, onChanged, setMsg, stt }) {
         <p style={{ fontSize: 12, color: "var(--steel)", margin: "2px 0 0" }}>
           영상을 올리면 자동으로 만들어집니다. 롱폼과 숏츠 양쪽에 있어야 구간을 찾을 수 있습니다.
         </p>
+      </div>
+
+      {isLong && (
+        <VideoChapterEditor video={video} setMsg={setMsg} onChanged={onChanged} />
+      )}
+    </div>
+  );
+}
+
+/** 챕터(파트) 나누기. 파일을 자르지 않고 시각으로만 나눈다.
+ *
+ * 추가·수정·삭제·순서를 화면에서 고친 뒤 [챕터 저장] 한 번으로 보낸다. 끝 시각을
+ * 비우면 다음 챕터 시작(마지막이면 영상 끝)까지로 본다. 시각은 "20:00" 이나
+ * "1:05:30" 처럼 적는다. */
+function VideoChapterEditor({ video, setMsg, onChanged }) {
+  const toRows = (list) => (list || []).map((c) => ({
+    title: c.title,
+    start: fmtLen(c.start_sec) === "—" ? "0:00" : fmtLen(c.start_sec),
+    end: c.end_sec != null ? fmtLen(c.end_sec) : "",
+  }));
+  const [rows, setRows] = useState(toRows(video.chapters));
+  const [busy, setBusy] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    setRows(toRows(video.chapters));
+    setDirty(false);
+  }, [video.id, JSON.stringify(video.chapters || [])]);
+
+  const edit = (i, patch) => {
+    setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+    setDirty(true);
+  };
+  const move = (i, d) => {
+    setRows((rs) => {
+      const j = i + d;
+      if (j < 0 || j >= rs.length) return rs;
+      const out = [...rs];
+      [out[i], out[j]] = [out[j], out[i]];
+      return out;
+    });
+    setDirty(true);
+  };
+  const add = () => {
+    const last = rows[rows.length - 1];
+    setRows((rs) => [...rs, { title: `${rs.length + 1}부`, start: last?.end || "", end: "" }]);
+    setDirty(true);
+  };
+  // 영상 길이를 똑같이 나눠 초안을 만든다. 40분을 둘로 → 0:00~20:00, 20:00~40:00.
+  const split = (n) => {
+    const d = video.duration_sec || 0;
+    if (!d) return;
+    setRows(Array.from({ length: n }, (_, i) => ({
+      title: `${i + 1}부`,
+      start: fmtLen((d / n) * i) === "—" ? "0:00" : fmtLen((d / n) * i),
+      end: i === n - 1 ? "" : fmtLen((d / n) * (i + 1)),
+    })));
+    setDirty(true);
+  };
+
+  const save = async () => {
+    const chapters = [];
+    for (const [i, r] of rows.entries()) {
+      const start = parseTime(r.start || "0");
+      const end = r.end.trim() ? parseTime(r.end) : null;
+      if (start === null || (r.end.trim() && end === null)) {
+        setMsg(errMsg(`${i + 1}번 챕터의 시각을 "20:00" 처럼 적어 주세요.`));
+        return;
+      }
+      chapters.push({ title: r.title.trim(), start_sec: start, end_sec: end });
+    }
+    setBusy(true);
+    try {
+      await api.saveVideoChapters(video.id, chapters);
+      setMsg(okMsg(`챕터 ${chapters.length}개를 저장했습니다.`));
+      setDirty(false);
+      onChanged();
+    } catch (e) {
+      setMsg(errMsg(e.message));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="field">
+      <label className="label">
+        챕터(파트) 나누기{" "}
+        <span style={{ fontWeight: "normal", color: "var(--steel)" }}>
+          — 영상 상세 오른쪽에 목록으로 나오고, 누르면 그 시각부터 재생합니다
+        </span>
+      </label>
+      {rows.length === 0 ? (
+        <p style={{ fontSize: 12.5, color: "var(--steel)", margin: "4px 0 8px" }}>
+          아직 없습니다.
+          {video.duration_sec ? " 아래에서 똑같이 나누거나 하나씩 추가하세요." : " 하나씩 추가하세요."}
+        </p>
+      ) : (
+        <div className="chapter-rows">
+          <div className="chapter-row chapter-row-head" aria-hidden="true">
+            <span>순서</span><span>제목</span><span>시작</span><span>끝(비우면 다음 챕터까지)</span><span />
+          </div>
+          {rows.map((r, i) => (
+            <div key={i} className="chapter-row">
+              <span className="chapter-no">{String(i + 1).padStart(2, "0")}</span>
+              <input className="input" value={r.title} maxLength={200} aria-label={`${i + 1}번 제목`}
+                onChange={(e) => edit(i, { title: e.target.value })} />
+              <input className="input" value={r.start} placeholder="0:00" aria-label={`${i + 1}번 시작`}
+                onChange={(e) => edit(i, { start: e.target.value })} />
+              <input className="input" value={r.end} placeholder="비움" aria-label={`${i + 1}번 끝`}
+                onChange={(e) => edit(i, { end: e.target.value })} />
+              <span className="chapter-actions">
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => move(i, -1)}
+                  disabled={i === 0} aria-label="위로">↑</button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => move(i, 1)}
+                  disabled={i === rows.length - 1} aria-label="아래로">↓</button>
+                <button type="button" className="btn btn-ghost btn-sm" aria-label="삭제"
+                  onClick={() => { setRows((rs) => rs.filter((_, j) => j !== i)); setDirty(true); }}>
+                  삭제
+                </button>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={add}>+ 챕터 추가</button>
+        {video.duration_sec > 0 && [2, 3, 4].map((n) => (
+          <button key={n} type="button" className="btn btn-ghost btn-sm" onClick={() => split(n)}>
+            {n}개로 똑같이 나누기
+          </button>
+        ))}
+        <button type="button" className="btn btn-sm" onClick={save} disabled={busy || !dirty}>
+          {busy ? "저장 중…" : "챕터 저장"}
+        </button>
       </div>
     </div>
   );

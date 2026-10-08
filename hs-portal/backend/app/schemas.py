@@ -167,6 +167,11 @@ class UserOut(BaseModel):
     plan_expires_at: Optional[datetime] = None
     plan_days_left: Optional[int] = None
     plan_paused: bool = False
+    # 학교 계정의 학교급: high / middle
+    school_level: Optional[str] = None
+    # 임시 비밀번호로 발급된 계정(학교 계정 신청 승인 등)은 첫 로그인에서
+    # 바꾸라고 알려야 한다.
+    must_change_password: bool = False
 
     class Config:
         from_attributes = True
@@ -353,6 +358,10 @@ class SchoolDetailOut(SchoolListItem):
     # 통째로 걸러 버려서, 서버가 담아도 화면에 도착하지 않는다.
     plan_expires_at: Optional[datetime] = None
     plan_days_left: Optional[int] = None
+    # 이 사람이 열 수 있는 진학정보(플래티넘) 페이지가 있는지.
+    has_admission_info: bool = False
+    # 학교급: high / middle (관리자 학교 관리 화면이 쓴다)
+    school_level: Optional[str] = None
 
 
 # ---------- 즐겨찾기 ----------
@@ -690,16 +699,6 @@ class ResumeRequest(BaseModel):
 
 class JournalSend(BaseModel):
     teacher_email: EmailStr
-
-
-# ---------- 선생님 계정 ----------
-class TeacherRegisterStudent(BaseModel):
-    user_id: int
-    class_name: str = ""
-
-
-class VerifyApprove(BaseModel):
-    class_name: str = ""
 
 
 class PlanPerksIn(BaseModel):

@@ -30,7 +30,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from .auth import require_admin
+from .auth import get_current_user_optional, require_admin
 from .database import get_db
 from .models import Setting, User
 
@@ -253,24 +253,42 @@ def _source(db: Session, video_id, start_sec, fallback):
 
     화면이 "영상이 있으면 이걸, 없으면 저걸, 초는 이 경우엔…"을 매번 따지게
     두면 챕터·강의·기본값 조합에서 반드시 어긋난다. 서버가 한 번에 정한다.
+
+    여기서 돌려주는 file_url 은 **원본 경로**다. 밖으로 내보내기 전에
+    _for_viewer 가 회원용 잠긴 주소로 바꾸거나 지운다.
     """
     if video_id:
         v = _video_out(db, video_id)
         if v and v["is_public"] and v["file_url"]:
-            return {"file_url": v["file_url"], "start": float(start_sec or 0),
-                    "duration_sec": v["duration_sec"]}
+            return {"video_id": v["id"], "file_url": v["file_url"],
+                    "start": float(start_sec or 0), "duration_sec": v["duration_sec"]}
         # 고르긴 했는데 못 쓴다(비공개거나 파일 없음). 기본 영상으로도 안 보낸다 —
         # 엉뚱한 영상이 재생되는 것보다 안 되는 편이 낫다.
         return None
     if fallback and fallback.get("file_url"):
-        return {"file_url": fallback["file_url"], "start": float(start_sec or 0),
-                "duration_sec": fallback.get("duration_sec")}
+        return {"video_id": fallback["id"], "file_url": fallback["file_url"],
+                "start": float(start_sec or 0), "duration_sec": fallback.get("duration_sec")}
     return None
 
 
-def _playable(db: Session, ch: dict, fallback) -> dict:
+def _for_viewer(src, user):
+    """(source, locked). 설명회는 **회원만** 본다 — 로그인 안 했으면 주소를
+    아예 안 만든다. 로그인했으면 /api/media 원본 대신 티켓이 붙은 주소를 준다
+    (원본은 membervideo 가 /api/media 에서 걸러 잠가 둔다)."""
+    if not src:
+        return None, False
+    if user is None:
+        return None, True
+    from . import membervideo
+    out = {k: v for k, v in src.items() if k != "video_id"}
+    out["file_url"] = membervideo.stream_url(user, src["video_id"])
+    return out, False
+
+
+def _playable(db: Session, ch: dict, fallback, user=None) -> dict:
     out = dict(ch)
-    out["source"] = _source(db, ch.get("video_id"), ch.get("start_sec"), fallback)
+    out["source"], out["locked"] = _for_viewer(
+        _source(db, ch.get("video_id"), ch.get("start_sec"), fallback), user)
     items = []
     for it in ch.get("items") or []:
         one = dict(it)
@@ -280,21 +298,31 @@ def _playable(db: Session, ch: dict, fallback) -> dict:
         start = it.get("start_sec")
         if start is None:
             start = 0 if it.get("video_id") else ch.get("start_sec")
-        one["source"] = _source(db, vid, start, fallback)
+        one["source"], one["locked"] = _for_viewer(_source(db, vid, start, fallback), user)
         items.append(one)
     out["items"] = items
     return out
 
 
 @router.get("/briefing")
-def get_briefing(db: Session = Depends(get_db)):
-    """설명회 페이지가 쓰는 것 전부 — 강사, 강의 영상, 챕터."""
+def get_briefing(db: Session = Depends(get_db),
+                 user: Optional[User] = Depends(get_current_user_optional)):
+    """설명회 페이지가 쓰는 것 전부 — 강사, 강의 영상, 챕터.
+
+    강사·챕터 제목은 누구나 본다(무엇을 듣게 되는지 알아야 가입한다).
+    재생 주소만 로그인한 회원에게 나간다.
+    """
     cfg = load_config(db)
     video = _video_out(db, cfg.get("video_id"))
     # 비공개 영상은 주소조차 내보내지 않는다. 내보내면 그 주소로 그냥 볼 수 있다.
     if video and not video["is_public"]:
         video = {**video, "file_url": "", "locked": True}
-    chapters = [_playable(db, ch, video) for ch in (cfg.get("chapters") or [])]
+    chapters = [_playable(db, ch, video, user) for ch in (cfg.get("chapters") or [])]
+    has_video = bool(video and video.get("file_url")) or any(
+        ch.get("source") or ch.get("locked") for ch in chapters)
+    if video and video.get("file_url"):
+        from . import membervideo
+        video = {**video, "file_url": membervideo.stream_url(user, video["id"]) if user else ""}
     return {
         "lecturer": load_profile(db),
         "headline": cfg.get("headline") or "",
@@ -302,6 +330,9 @@ def get_briefing(db: Session = Depends(get_db)):
         "cover": cfg.get("cover") or "",
         "chapters": chapters,
         "video": video,
+        "logged_in": user is not None,
+        # 영상은 있는데 로그인을 안 해서 못 튼다 — 화면이 [회원가입하고 보기]를 띄운다.
+        "login_required": user is None and has_video,
         # 화면 맨 위 요약줄에 쓴다. 세는 규칙이 화면마다 달라지지 않도록
         # 서버가 한 번만 세어 내려보낸다.
         "summary": {
@@ -376,6 +407,9 @@ def put_briefing(payload: ConfigIn, db: Session = Depends(get_db),
     else:
         row.value = value
     db.commit()
+    # 잠글 파일 목록이 바뀌었다(새로 붙인 영상은 잠그고, 뺀 영상은 푼다).
+    from . import membervideo
+    membervideo.invalidate()
     return get_briefing_admin(db, user)
 
 

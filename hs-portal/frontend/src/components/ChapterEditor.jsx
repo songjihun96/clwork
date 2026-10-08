@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { errMsg, okMsg } from "../toast";
 
@@ -15,6 +15,11 @@ import { errMsg, okMsg } from "../toast";
  * `feed` 로 받는다 — 어느 API 에 저장하는지, 그리고 **영상이 공개여야
  * 하는지**. 설명회는 공개라야 재생되고, 파는 영상은 반대로 공개면 안 된다
  * (공개로 두면 특강 목록에 그냥 뜬다).
+ *
+ * **시각은 적지 않고 짚는다.** 강의(하위 항목)는 파트마다 올린 영상을 고르는
+ * 것이 기본이다. 긴 영상 하나를 나눠야 할 때는 위 미리보기에서 원하는 장면에
+ * 멈추고 그 줄의 [지금 위치]를 누른다 — "12:34" 를 손으로 계산해 적게 하면
+ * 틀리고, 틀린 시각은 학생 화면에서 엉뚱한 곳을 튼다.
  */
 
 /** 설명회용 기본값. 안 주면 예전과 똑같이 동작한다. */
@@ -49,6 +54,10 @@ export default function ChapterEditor({ setMsg, feed = BRIEFING_FEED }) {
   const [pasting, setPasting] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [uploading, setUploading] = useState(false);
+  // 미리보기: 어느 영상을 틀고 있는지와 지금 재생 위치
+  const [preview, setPreview] = useState(null);     // video id
+  const [previewAt, setPreviewAt] = useState(0);
+  const previewRef = useRef(null);
 
   useEffect(() => {
     feed.load().then(setCfg)
@@ -90,6 +99,29 @@ export default function ChapterEditor({ setMsg, feed = BRIEFING_FEED }) {
 
   const removeItem = (i, j) =>
     patchCh(i, { items: (chapters[i].items || []).filter((_, k) => k !== j) });
+
+  const previewVideo = videos.find((v) => String(v.id) === String(preview)) || null;
+
+  // 이 영상을 미리보기에 띄운다. 시각을 주면 그 장면으로 옮긴다.
+  const openPreview = (videoId, at = null) => {
+    if (!videoId) return;
+    const same = String(videoId) === String(preview);
+    setPreview(videoId);
+    const seek = () => {
+      const el = previewRef.current;
+      if (!el) return;
+      if (at !== null && at !== undefined) el.currentTime = at;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    };
+    if (same) seek();
+    else setTimeout(seek, 150);
+  };
+
+  // [지금 위치] — 미리보기에서 멈춘 자리를 그 줄의 시작으로 넣는다.
+  const hereFor = (videoId) =>
+    previewVideo && String(videoId) === String(preview)
+      ? Math.round((previewRef.current?.currentTime || 0) * 100) / 100
+      : null;
 
   const applyPaste = () => {
     // 한 줄에 하나. 앞에 공백이나 "-" 가 있으면 그 위 챕터의 강의로 본다.
@@ -257,6 +289,31 @@ export default function ChapterEditor({ setMsg, feed = BRIEFING_FEED }) {
             </div>
           )}
 
+          {/* 미리보기. 줄의 [▶ 미리보기]로 띄우고, 원하는 장면에서 [지금 위치]를 누른다. */}
+          {previewVideo && (
+            <div className="chapter-preview">
+              <div className="chapter-preview-head">
+                <b>미리보기 · {previewVideo.title}</b>
+                <span>{fmtTime(previewAt)}</span>
+                <span style={{ flex: 1 }} />
+                <button className="btn btn-ghost btn-sm" onClick={() => setPreview(null)}>닫기</button>
+              </div>
+              {previewVideo.file_url ? (
+                <video ref={previewRef} key={previewVideo.id} src={previewVideo.file_url}
+                  controls preload="metadata"
+                  onTimeUpdate={(e) => setPreviewAt(e.currentTarget.currentTime)}
+                  onSeeked={(e) => setPreviewAt(e.currentTarget.currentTime)} />
+              ) : (
+                <p style={{ margin: 0, fontSize: 13, color: "var(--color-attention)" }}>
+                  이 영상에는 아직 파일이 없습니다. 영상 관리에서 올려주세요.
+                </p>
+              )}
+              <p className="chapter-preview-help">
+                원하는 장면에서 멈춘 뒤, 아래 줄의 <b>[지금 위치]</b>를 누르면 그 장면부터 재생되게 됩니다.
+              </p>
+            </div>
+          )}
+
           <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
             {chapters.length === 0 && (
               <p style={{ fontSize: 13, color: "var(--steel)", margin: 0 }}>
@@ -278,8 +335,13 @@ export default function ChapterEditor({ setMsg, feed = BRIEFING_FEED }) {
                     value={ch.title} placeholder="챕터 제목"
                     onChange={(e) => patchCh(i, { title: e.target.value })} />
                   <VideoSelect videos={videos} value={ch.video_id}
-                    onChange={(v) => patchCh(i, { video_id: v })}
+                    onChange={(v) => patchCh(i, { video_id: v, start_sec: 0 })}
                     empty="영상 고르기" style={{ flex: "1 1 180px" }} />
+                  {ch.video_id && (
+                    <button className="btn btn-ghost btn-sm" onClick={() => openPreview(ch.video_id)}>
+                      ▶ 미리보기
+                    </button>
+                  )}
                   <button className="btn btn-ghost btn-sm" onClick={() => move(i, -1)}
                     disabled={i === 0} title="위로">▲</button>
                   <button className="btn btn-ghost btn-sm" onClick={() => move(i, 1)}
@@ -290,6 +352,15 @@ export default function ChapterEditor({ setMsg, feed = BRIEFING_FEED }) {
                 <ChapterStatus ch={ch} videos={videos} setMsg={setMsg}
                   wantPublic={feed.wantPublic}
                   onFixed={() => api.adminVideos("longform").then(setVideos)} />
+
+                {/* 긴 영상 하나를 여러 챕터가 나눠 쓸 때만 필요하다. 보통은 처음부터. */}
+                {ch.video_id && (
+                  <StartPicker value={ch.start_sec || 0} emptyLabel="처음부터"
+                    here={hereFor(ch.video_id)}
+                    onHere={(t) => patchCh(i, { start_sec: t })}
+                    onReset={() => patchCh(i, { start_sec: 0 })}
+                    onJump={(t) => openPreview(ch.video_id, t)} />
+                )}
 
                 <div style={{ display: "grid", gap: 6, margin: "10px 0 0", paddingLeft: 16 }}>
                   {(ch.items || []).map((it, j) => (
@@ -302,12 +373,24 @@ export default function ChapterEditor({ setMsg, feed = BRIEFING_FEED }) {
                         value={it.title} placeholder="강의 제목"
                         onChange={(e) => patchItem(i, j, { title: e.target.value })} />
                       <VideoSelect videos={videos} value={it.video_id}
-                        onChange={(v) => patchItem(i, j, { video_id: v })}
+                        onChange={(v) => patchItem(i, j, { video_id: v, start_sec: null })}
                         empty="챕터 영상 사용" style={{ flex: "1 1 170px" }} />
-                      <TimeInput value={it.start_sec} placeholder="시작(선택)"
-                        onChange={(v) => patchItem(i, j, { start_sec: v })} allowEmpty />
+                      {(it.video_id || ch.video_id) && (
+                        <button className="btn btn-ghost btn-sm"
+                          onClick={() => openPreview(it.video_id || ch.video_id)}>▶ 미리보기</button>
+                      )}
                       <button className="btn btn-ghost btn-sm"
                         onClick={() => removeItem(i, j)}>×</button>
+                      {(it.video_id || ch.video_id) && (
+                        <div style={{ flexBasis: "100%", paddingLeft: 20 }}>
+                          <StartPicker value={it.start_sec}
+                            emptyLabel={it.video_id ? "처음부터" : "챕터 시작부터"}
+                            here={hereFor(it.video_id || ch.video_id)}
+                            onHere={(t) => patchItem(i, j, { start_sec: t })}
+                            onReset={() => patchItem(i, j, { start_sec: null })}
+                            onJump={(t) => openPreview(it.video_id || ch.video_id, t)} />
+                        </div>
+                      )}
                     </div>
                   ))}
                   <div>
@@ -351,32 +434,30 @@ function VideoSelect({ videos, value, onChange, empty, style }) {
   );
 }
 
-/** 시각 칸. 화면에는 3:24 로 보이고 밖으로는 초로 나간다. */
-function TimeInput({ value, onChange, placeholder, allowEmpty = false }) {
-  const [text, setText] = useState(
-    value === null || value === undefined ? "" : fmtTime(value));
-  const [bad, setBad] = useState(false);
-
-  const commit = (t) => {
-    if (!t.trim()) {
-      setBad(false);
-      onChange(allowEmpty ? null : 0);
-      return;
-    }
-    const sec = parseTime(t);
-    setBad(sec === null);
-    if (sec !== null) onChange(sec);
-  };
-
+/** 시작 위치. 숫자를 적는 대신 미리보기에서 멈춘 자리를 [지금 위치]로 넣는다.
+ *  here: 지금 미리보기 위치(이 줄의 영상을 틀고 있을 때만 값이 있다). */
+function StartPicker({ value, emptyLabel, here, onHere, onReset, onJump }) {
+  const set = value !== null && value !== undefined && value > 0;
   return (
-    <input className="input" style={{
-      width: 110, borderColor: bad ? "var(--color-attention)" : undefined,
-    }}
-      value={text} placeholder={placeholder}
-      onChange={(e) => { setText(e.target.value); commit(e.target.value); }} />
+    <div className="start-picker">
+      <span className="start-picker-label">시작</span>
+      {set ? (
+        <button type="button" className="start-chip" title="눌러서 미리보기에서 확인"
+          onClick={() => onJump(value)}>{fmtTime(value)}부터</button>
+      ) : (
+        <span className="start-chip start-chip-empty">{emptyLabel}</span>
+      )}
+      <button type="button" className="btn btn-ghost btn-sm" disabled={here === null}
+        title={here === null ? "먼저 [▶ 미리보기]로 이 영상을 띄우세요" : `${fmtTime(here)}부터 재생되게 합니다`}
+        onClick={() => onHere(here)}>
+        지금 위치{here !== null ? ` (${fmtTime(here)})` : ""}
+      </button>
+      {set && (
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onReset}>처음부터</button>
+      )}
+    </div>
   );
 }
-
 
 /** 이 챕터가 학생 화면에서 실제로 재생되는지.
  *

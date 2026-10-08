@@ -1,0 +1,1459 @@
+{
+  "school_teacher_full": {
+    "version": "school_teacher_full",
+    "fps": 60,
+    "frames": 25447,
+    "seconds": 424.12,
+    "chapterBar": true,
+    "out": "full/udj_school_teacher_full.mp4",
+    "chapters": {
+      "c1": "서비스 소개",
+      "c2": "학교 계정 시작하기",
+      "c3": "학교 관리 화면",
+      "c4": "담당 선생님 업무",
+      "c5": "학생 서비스",
+      "c6": "학교와 학생의 연결",
+      "c7": "도입 후 운영 흐름",
+      "c8": "마무리"
+    },
+    "scenes": [
+      {
+        "id": "intro",
+        "chapter": "c1",
+        "card": null,
+        "gap": 0.45,
+        "lines": [
+          {
+            "text": "우리동네 직업계고는 전국 직업계고 정보를 지역·계열·학과별로 찾아보는 직업계고 정보 포털입니다.",
+            "src": "audio/school/intro_0.wav",
+            "dur": 6.926,
+            "at": 30,
+            "frames": 416
+          },
+          {
+            "text": "학생과 학부모는 학교를 찾고 비교하며, 학교는 학교 계정으로 자기 학교 정보를 직접 소개하고 관리합니다.",
+            "src": "audio/school/intro_1.wav",
+            "dur": 6.717,
+            "at": 473,
+            "frames": 403
+          },
+          {
+            "text": "이 영상에서는 학교가 우리동네 직업계고를 어떻게 시작하고 운영하는지 실제 화면으로 소개합니다.",
+            "src": "audio/school/intro_2.wav",
+            "dur": 6.329,
+            "at": 903,
+            "frames": 380
+          },
+          {
+            "text": "화면에 나오는 학교와 인물, 숫자는 모두 시연용 가상 데이터입니다.",
+            "src": "audio/school/intro_3.wav",
+            "dur": 4.436,
+            "at": 1309,
+            "frames": 266
+          }
+        ],
+        "sec": 26.958000000000002,
+        "from": 0,
+        "frames": 1617
+      },
+      {
+        "id": "request",
+        "chapter": "c2",
+        "card": null,
+        "gap": 2.7833333333333337,
+        "lines": [
+          {
+            "text": "학교 계정은 직접 가입하지 않고, 신청을 통해 발급받습니다.",
+            "src": "audio/school/request_0.wav",
+            "dur": 4.178,
+            "at": 30,
+            "frames": 251
+          },
+          {
+            "text": "학교 계정 신청 화면에서 학교를 찾고, 담당자 이름과 연락처, 이메일을 입력해 신청합니다.",
+            "src": "audio/school/request_1.wav",
+            "dur": 6.271,
+            "at": 448,
+            "frames": 376
+          },
+          {
+            "text": "신청이 접수되면 운영진이 담당자에게 확인 전화를 한 뒤 계정을 만들고, 입력한 이메일로 안내합니다.",
+            "src": "audio/school/request_2.wav",
+            "dur": 6.627,
+            "at": 991,
+            "frames": 398
+          }
+        ],
+        "sec": 26.176,
+        "from": 1617,
+        "frames": 1571
+      },
+      {
+        "id": "firstlogin",
+        "chapter": "c2",
+        "card": null,
+        "gap": 2.95,
+        "lines": [
+          {
+            "text": "안내받은 이메일과 임시 비밀번호로 로그인하면 학교 관리 화면으로 이동합니다.",
+            "src": "audio/school/firstlogin_0.wav",
+            "dur": 5.057,
+            "at": 30,
+            "frames": 303
+          },
+          {
+            "text": "임시 비밀번호로 로그인하면 상단에 변경 안내가 표시되므로, 먼저 새 비밀번호로 바꿔 줍니다.",
+            "src": "audio/school/firstlogin_1.wav",
+            "dur": 6.391,
+            "at": 510,
+            "frames": 383
+          }
+        ],
+        "sec": 18.098,
+        "from": 3188,
+        "frames": 1086
+      },
+      {
+        "id": "overview",
+        "chapter": "c3",
+        "card": null,
+        "gap": 1.95,
+        "lines": [
+          {
+            "text": "학교 관리 화면은 통계, 학교 정보, 문의 관리, 학교일정등록, 취업/진학 정보, 노출 플랜의 여섯 개 탭으로 구성됩니다.",
+            "src": "audio/school/overview_0.wav",
+            "dur": 8.653,
+            "at": 30,
+            "frames": 519
+          },
+          {
+            "text": "상단에는 이용 중인 플랜의 남은 기간이 표시됩니다.",
+            "src": "audio/school/overview_1.wav",
+            "dur": 3.091,
+            "at": 666,
+            "frames": 185
+          }
+        ],
+        "sec": 16.394,
+        "from": 4274,
+        "frames": 984
+      },
+      {
+        "id": "profile",
+        "chapter": "c3",
+        "card": null,
+        "gap": 2.7,
+        "lines": [
+          {
+            "text": "학교 정보 탭에서는 나이스에서 받아온 기본 정보 외에, 학교가 직접 소개할 내용을 입력합니다.",
+            "src": "audio/school/profile_0.wav",
+            "dur": 5.874,
+            "at": 30,
+            "frames": 352
+          },
+          {
+            "text": "검색 결과에 보이는 한 줄 소개와 대표 이미지, 기숙사 운영 여부를 입력하고,",
+            "src": "audio/school/profile_1.wav",
+            "dur": 5.16,
+            "at": 544,
+            "frames": 310
+          },
+          {
+            "text": "상세 페이지에 보이는 개설 학과와 학교 소개, 실습 시설, 소개 영상을 등록합니다.",
+            "src": "audio/school/profile_2.wav",
+            "dur": 5.899,
+            "at": 1016,
+            "frames": 354
+          },
+          {
+            "text": "저장하면 학생과 학부모가 보는 학교 페이지에 바로 반영됩니다.",
+            "src": "audio/school/profile_3.wav",
+            "dur": 3.959,
+            "at": 1532,
+            "frames": 238
+          }
+        ],
+        "sec": 32.442,
+        "from": 5258,
+        "frames": 1947
+      },
+      {
+        "id": "stats",
+        "chapter": "c3",
+        "card": null,
+        "gap": 1.95,
+        "lines": [
+          {
+            "text": "통계 탭에서는 학교 페이지의 누적 조회수와 즐겨찾기 수, 같은 지역·계열 안에서의 노출 순서를 확인합니다.",
+            "src": "audio/school/stats_0.wav",
+            "dur": 7.339,
+            "at": 30,
+            "frames": 440
+          },
+          {
+            "text": "아래 그래프에서는 최근 14일 동안의 일별 조회수를 볼 수 있습니다.",
+            "src": "audio/school/stats_1.wav",
+            "dur": 4.429,
+            "at": 587,
+            "frames": 266
+          }
+        ],
+        "sec": 16.418,
+        "from": 7205,
+        "frames": 985
+      },
+      {
+        "id": "plan",
+        "chapter": "c3",
+        "card": null,
+        "gap": 1.7833333333333332,
+        "lines": [
+          {
+            "text": "노출 플랜 탭에서는 현재 사용 중인 기능과 플랜별 혜택을 확인하고 플랜을 신청합니다.",
+            "src": "audio/school/plan_0.wav",
+            "dur": 5.611,
+            "at": 30,
+            "frames": 337
+          },
+          {
+            "text": "학교 정보 등록과 문의 답변은 모든 플랜에서 쓸 수 있고, 학교 일정 등록과 취업/진학 정보 공개는 플랜 혜택입니다.",
+            "src": "audio/school/plan_1.wav",
+            "dur": 7.221,
+            "at": 474,
+            "frames": 433
+          },
+          {
+            "text": "신청 후 입금이 확인되면 관리자가 승인하며, 신청 내역에서 견적서와 계약서, 명세서를 확인할 수 있습니다.",
+            "src": "audio/school/plan_2.wav",
+            "dur": 7.502,
+            "at": 1014,
+            "frames": 450
+          }
+        ],
+        "sec": 26.433999999999997,
+        "from": 8190,
+        "frames": 1586
+      },
+      {
+        "id": "tasks",
+        "chapter": "c4",
+        "card": null,
+        "gap": 0.95,
+        "lines": [
+          {
+            "text": "다음은 학교 계정을 맡은 담당 선생님이 자주 처리하는 업무입니다.",
+            "src": "audio/school/tasks_0.wav",
+            "dur": 4.138,
+            "at": 30,
+            "frames": 248
+          },
+          {
+            "text": "학교 계정으로 로그인해 문의 답변, 학교 일정 등록, 취업·진학 정보 입력을 처리합니다.",
+            "src": "audio/school/tasks_1.wav",
+            "dur": 5.777,
+            "at": 335,
+            "frames": 347
+          }
+        ],
+        "sec": 12.564999999999998,
+        "from": 9776,
+        "frames": 754
+      },
+      {
+        "id": "inquiry",
+        "chapter": "c4",
+        "card": null,
+        "gap": 2.25,
+        "lines": [
+          {
+            "text": "학생이나 학부모가 학교 페이지에서 문의를 남기면,",
+            "src": "audio/school/inquiry_0.wav",
+            "dur": 3.054,
+            "at": 30,
+            "frames": 183
+          },
+          {
+            "text": "문의 관리 탭에 답변 대기 상태로 표시됩니다.",
+            "src": "audio/school/inquiry_1.wav",
+            "dur": 2.752,
+            "at": 348,
+            "frames": 165
+          },
+          {
+            "text": "답변을 입력하고 저장하면 문의자가 남긴 이메일로 답변이 발송되며, 파일을 첨부할 수도 있습니다.",
+            "src": "audio/school/inquiry_2.wav",
+            "dur": 6.249,
+            "at": 648,
+            "frames": 375
+          },
+          {
+            "text": "새 문의 알림 받기에 이메일을 등록해 두면, 문의가 들어올 때 알림 메일을 받을 수 있습니다.",
+            "src": "audio/school/inquiry_3.wav",
+            "dur": 5.925,
+            "at": 1158,
+            "frames": 356
+          },
+          {
+            "text": "처리가 끝난 문의는 삭제할 수 있고, 접수 후 1년이 지난 문의는 자동으로 파기됩니다.",
+            "src": "audio/school/inquiry_4.wav",
+            "dur": 5.402,
+            "at": 1649,
+            "frames": 324
+          }
+        ],
+        "sec": 35.382,
+        "from": 10530,
+        "frames": 2123
+      },
+      {
+        "id": "events",
+        "chapter": "c4",
+        "card": null,
+        "gap": 2.7833333333333337,
+        "lines": [
+          {
+            "text": "학교일정등록 탭에서는 학교 설명회와 참가 행사 일정을 등록합니다.",
+            "src": "audio/school/events_0.wav",
+            "dur": 4.576,
+            "at": 30,
+            "frames": 275
+          },
+          {
+            "text": "일정 종류와 이름, 날짜와 시간, 장소를 입력해 추가하면,",
+            "src": "audio/school/events_1.wav",
+            "dur": 4.582,
+            "at": 472,
+            "frames": 275
+          },
+          {
+            "text": "학교 일정 모아보기와 학교 페이지, 그리고 이 학교를 즐겨찾기한 학생의 화면에 D-day로 표시됩니다.",
+            "src": "audio/school/events_2.wav",
+            "dur": 6.364,
+            "at": 913,
+            "frames": 382
+          }
+        ],
+        "sec": 24.621999999999996,
+        "from": 12653,
+        "frames": 1477
+      },
+      {
+        "id": "admission",
+        "chapter": "c4",
+        "card": null,
+        "gap": 2.45,
+        "lines": [
+          {
+            "text": "취업/진학 정보 탭에서는 졸업 연도별 진로 자료를 입력합니다.",
+            "src": "audio/school/admission_0.wav",
+            "dur": 4.069,
+            "at": 30,
+            "frames": 244
+          },
+          {
+            "text": "졸업생 수와 진학·취업 인원, 대학과 학과별 진학 인원, 취업 분야와 주요 취업처를 입력하고,",
+            "src": "audio/school/admission_1.wav",
+            "dur": 6.836,
+            "at": 421,
+            "frames": 410
+          },
+          {
+            "text": "대학별 자료는 엑셀 파일로 한 번에 올릴 수 있습니다.",
+            "src": "audio/school/admission_2.wav",
+            "dur": 3.448,
+            "at": 978,
+            "frames": 207
+          },
+          {
+            "text": "공개 범위를 정하면, 입력한 자료가 그래프로 정리된 취업/진학 정보 페이지로 공개됩니다.",
+            "src": "audio/school/admission_3.wav",
+            "dur": 5.556,
+            "at": 1332,
+            "frames": 333
+          }
+        ],
+        "sec": 30.459,
+        "from": 14130,
+        "frames": 1828
+      },
+      {
+        "id": "press",
+        "chapter": "c4",
+        "card": null,
+        "gap": 2.95,
+        "lines": [
+          {
+            "text": "특성화고신문에 올린 보도자료는 기사 제목의 학교 이름으로 연결되어, 학교 페이지의 특성화고신문 기사에 자동으로 표시됩니다.",
+            "src": "audio/school/press_0.wav",
+            "dur": 8.033,
+            "at": 30,
+            "frames": 482
+          },
+          {
+            "text": "특성화고신문에 보도자료를 올리는 권한이 필요하면, 사이트 하단의 전화번호나 이메일로 문의해 주세요.",
+            "src": "audio/school/press_1.wav",
+            "dur": 6.236,
+            "at": 689,
+            "frames": 374
+          }
+        ],
+        "sec": 20.918999999999997,
+        "from": 15958,
+        "frames": 1255
+      },
+      {
+        "id": "student",
+        "chapter": "c5",
+        "card": null,
+        "gap": 1.5611111111111111,
+        "lines": [
+          {
+            "text": "이번에는 학생에게 우리동네 직업계고를 안내할 때 보여 줄 수 있는 기능입니다.",
+            "src": "audio/school/student_0.wav",
+            "dur": 5.023,
+            "at": 30,
+            "frames": 301
+          },
+          {
+            "text": "학교 검색에서는 지역과 학교 계열, 학과 계열 조건으로 전국 직업계고를 찾고, 지도로 위치를 확인합니다.",
+            "src": "audio/school/student_1.wav",
+            "dur": 7.333,
+            "at": 425,
+            "frames": 440
+          },
+          {
+            "text": "학교 페이지에서는 학교가 입력한 개설 학과와 학교 설명회 일정을 보고, 학교에 바로 문의할 수 있습니다.",
+            "src": "audio/school/student_2.wav",
+            "dur": 6.677,
+            "at": 959,
+            "frames": 401
+          },
+          {
+            "text": "학교 일정 메뉴에서는 전국 직업계고의 학교 설명회와 참가 행사를 지역별로 모아 볼 수 있습니다.",
+            "src": "audio/school/student_3.wav",
+            "dur": 6.057,
+            "at": 1453,
+            "frames": 363
+          },
+          {
+            "text": "관심 있는 학교는 최대 세 곳까지 나란히 비교할 수 있습니다.",
+            "src": "audio/school/student_4.wav",
+            "dur": 3.805,
+            "at": 1910,
+            "frames": 228
+          },
+          {
+            "text": "진로 테스트는 36개 문항에 답하면 관심 분야와 추천 학과, 통학 가능한 학교를 알려 줍니다.",
+            "src": "audio/school/student_5.wav",
+            "dur": 6.291,
+            "at": 2232,
+            "frames": 377
+          },
+          {
+            "text": "학생 회원가입은 휴대폰 인증으로 진행하며, 만 14세 미만은 보호자 동의를 거칩니다.",
+            "src": "audio/school/student_6.wav",
+            "dur": 5.703,
+            "at": 2703,
+            "frames": 342
+          },
+          {
+            "text": "학생 계정으로 로그인하면 관심 학교를 즐겨찾기하고 메모를 남기며, 즐겨찾기한 학교의 일정을 D-day로 확인할 수 있습니다.",
+            "src": "audio/school/student_7.wav",
+            "dur": 7.783,
+            "at": 3139,
+            "frames": 467
+          },
+          {
+            "text": "학교 검색과 진로 테스트는 로그인하지 않아도 이용할 수 있습니다.",
+            "src": "audio/school/student_8.wav",
+            "dur": 3.897,
+            "at": 3700,
+            "frames": 234
+          }
+        ],
+        "sec": 67.36900000000001,
+        "from": 17213,
+        "frames": 4042
+      },
+      {
+        "id": "connect",
+        "chapter": "c6",
+        "card": null,
+        "gap": 1.25,
+        "lines": [
+          {
+            "text": "학교 계정에서 입력한 정보는 학생이 보는 화면과 이렇게 연결됩니다.",
+            "src": "audio/school/connect_0.wav",
+            "dur": 4.289,
+            "at": 30,
+            "frames": 257
+          },
+          {
+            "text": "학교 정보는 검색 결과와 학교 페이지에, 학교 일정은 일정 모아보기와 즐겨찾기 D-day에, 취업/진학 정보는 공개 페이지에 나타납니다.",
+            "src": "audio/school/connect_1.wav",
+            "dur": 9.075,
+            "at": 362,
+            "frames": 544
+          },
+          {
+            "text": "학생과 학부모의 문의는 문의 관리로 들어오고, 학교의 답변은 문의자의 이메일로 전달됩니다.",
+            "src": "audio/school/connect_2.wav",
+            "dur": 5.744,
+            "at": 982,
+            "frames": 345
+          },
+          {
+            "text": "학교 페이지 조회와 즐겨찾기는 학교 통계에 집계됩니다.",
+            "src": "audio/school/connect_3.wav",
+            "dur": 3.399,
+            "at": 1401,
+            "frames": 204
+          },
+          {
+            "text": "학교 계정은 학생 개인을 관리하는 계정이 아니라, 학교를 소개하고 문의에 답하는 계정입니다.",
+            "src": "audio/school/connect_4.wav",
+            "dur": 5.668,
+            "at": 1680,
+            "frames": 340
+          }
+        ],
+        "sec": 35.175,
+        "from": 21255,
+        "frames": 2110
+      },
+      {
+        "id": "flow",
+        "chapter": "c7",
+        "card": null,
+        "gap": 1.45,
+        "lines": [
+          {
+            "text": "도입 후 운영 흐름을 정리하면 다음과 같습니다.",
+            "src": "audio/school/flow_0.wav",
+            "dur": 2.86,
+            "at": 30,
+            "frames": 172
+          },
+          {
+            "text": "학교 계정을 신청하고, 확인 전화를 거쳐 계정을 받은 뒤, 첫 로그인에서 비밀번호를 바꿉니다.",
+            "src": "audio/school/flow_1.wav",
+            "dur": 6.162,
+            "at": 289,
+            "frames": 370
+          },
+          {
+            "text": "학교 정보를 입력해 학교 페이지를 채우고, 필요한 플랜을 골라 일정과 취업·진학 정보를 공개합니다.",
+            "src": "audio/school/flow_2.wav",
+            "dur": 6.329,
+            "at": 745,
+            "frames": 380
+          },
+          {
+            "text": "이후에는 문의에 답변하고 통계를 확인하며, 일정과 자료를 꾸준히 갱신합니다.",
+            "src": "audio/school/flow_3.wav",
+            "dur": 5.22,
+            "at": 1212,
+            "frames": 313
+          }
+        ],
+        "sec": 27.121,
+        "from": 23365,
+        "frames": 1627
+      },
+      {
+        "id": "outro",
+        "chapter": "c8",
+        "card": null,
+        "gap": 0.45,
+        "lines": [
+          {
+            "text": "우리동네 직업계고.",
+            "src": "audio/school/outro_0.wav",
+            "dur": 1.389,
+            "at": 30,
+            "frames": 83
+          },
+          {
+            "text": "학교 계정 신청은 udjschool.ggm.kr에서 할 수 있습니다.",
+            "src": "audio/school/outro_1.wav",
+            "dur": 4.543,
+            "at": 140,
+            "frames": 273
+          }
+        ],
+        "sec": 7.582000000000001,
+        "from": 24992,
+        "frames": 455
+      }
+    ]
+  },
+  "school_intro": {
+    "version": "school_intro",
+    "fps": 60,
+    "frames": 6356,
+    "seconds": 105.93,
+    "chapterBar": false,
+    "out": "school/udj_school_intro.mp4",
+    "chapters": {
+      "c1": "서비스 소개",
+      "c2": "학교 계정 시작하기",
+      "c3": "학교 관리 화면",
+      "c4": "담당 선생님 업무",
+      "c5": "학생 서비스",
+      "c6": "학교와 학생의 연결",
+      "c7": "도입 후 운영 흐름",
+      "c8": "마무리"
+    },
+    "scenes": [
+      {
+        "id": "intro",
+        "chapter": "c1",
+        "card": null,
+        "gap": 0.45,
+        "lines": [
+          {
+            "text": "우리동네 직업계고는 전국 직업계고 정보를 지역·계열·학과별로 찾아보는 직업계고 정보 포털입니다.",
+            "src": "audio/school/intro_0.wav",
+            "dur": 6.926,
+            "at": 30,
+            "frames": 416
+          },
+          {
+            "text": "학생과 학부모는 학교를 찾고 비교하며, 학교는 학교 계정으로 자기 학교 정보를 직접 소개하고 관리합니다.",
+            "src": "audio/school/intro_1.wav",
+            "dur": 6.717,
+            "at": 473,
+            "frames": 403
+          },
+          {
+            "text": "이 영상에서는 학교가 우리동네 직업계고를 어떻게 시작하고 운영하는지 실제 화면으로 소개합니다.",
+            "src": "audio/school/intro_2.wav",
+            "dur": 6.329,
+            "at": 903,
+            "frames": 380
+          },
+          {
+            "text": "화면에 나오는 학교와 인물, 숫자는 모두 시연용 가상 데이터입니다.",
+            "src": "audio/school/intro_3.wav",
+            "dur": 4.436,
+            "at": 1309,
+            "frames": 266
+          }
+        ],
+        "sec": 26.958000000000002,
+        "from": 0,
+        "frames": 1617
+      },
+      {
+        "id": "request",
+        "chapter": "c2",
+        "card": null,
+        "gap": 2.7833333333333337,
+        "lines": [
+          {
+            "text": "학교 계정은 직접 가입하지 않고, 신청을 통해 발급받습니다.",
+            "src": "audio/school/request_0.wav",
+            "dur": 4.178,
+            "at": 30,
+            "frames": 251
+          },
+          {
+            "text": "학교 계정 신청 화면에서 학교를 찾고, 담당자 이름과 연락처, 이메일을 입력해 신청합니다.",
+            "src": "audio/school/request_1.wav",
+            "dur": 6.271,
+            "at": 448,
+            "frames": 376
+          },
+          {
+            "text": "신청이 접수되면 운영진이 담당자에게 확인 전화를 한 뒤 계정을 만들고, 입력한 이메일로 안내합니다.",
+            "src": "audio/school/request_2.wav",
+            "dur": 6.627,
+            "at": 991,
+            "frames": 398
+          }
+        ],
+        "sec": 26.176,
+        "from": 1617,
+        "frames": 1571
+      },
+      {
+        "id": "firstlogin",
+        "chapter": "c2",
+        "card": null,
+        "gap": 2.95,
+        "lines": [
+          {
+            "text": "안내받은 이메일과 임시 비밀번호로 로그인하면 학교 관리 화면으로 이동합니다.",
+            "src": "audio/school/firstlogin_0.wav",
+            "dur": 5.057,
+            "at": 30,
+            "frames": 303
+          },
+          {
+            "text": "임시 비밀번호로 로그인하면 상단에 변경 안내가 표시되므로, 먼저 새 비밀번호로 바꿔 줍니다.",
+            "src": "audio/school/firstlogin_1.wav",
+            "dur": 6.391,
+            "at": 510,
+            "frames": 383
+          }
+        ],
+        "sec": 18.098,
+        "from": 3188,
+        "frames": 1086
+      },
+      {
+        "id": "flow",
+        "chapter": "c7",
+        "card": null,
+        "gap": 1.45,
+        "lines": [
+          {
+            "text": "도입 후 운영 흐름을 정리하면 다음과 같습니다.",
+            "src": "audio/school/flow_0.wav",
+            "dur": 2.86,
+            "at": 30,
+            "frames": 172
+          },
+          {
+            "text": "학교 계정을 신청하고, 확인 전화를 거쳐 계정을 받은 뒤, 첫 로그인에서 비밀번호를 바꿉니다.",
+            "src": "audio/school/flow_1.wav",
+            "dur": 6.162,
+            "at": 289,
+            "frames": 370
+          },
+          {
+            "text": "학교 정보를 입력해 학교 페이지를 채우고, 필요한 플랜을 골라 일정과 취업·진학 정보를 공개합니다.",
+            "src": "audio/school/flow_2.wav",
+            "dur": 6.329,
+            "at": 745,
+            "frames": 380
+          },
+          {
+            "text": "이후에는 문의에 답변하고 통계를 확인하며, 일정과 자료를 꾸준히 갱신합니다.",
+            "src": "audio/school/flow_3.wav",
+            "dur": 5.22,
+            "at": 1212,
+            "frames": 313
+          }
+        ],
+        "sec": 27.121,
+        "from": 4274,
+        "frames": 1627
+      },
+      {
+        "id": "outro",
+        "chapter": "c8",
+        "card": null,
+        "gap": 0.45,
+        "lines": [
+          {
+            "text": "우리동네 직업계고.",
+            "src": "audio/school/outro_0.wav",
+            "dur": 1.389,
+            "at": 30,
+            "frames": 83
+          },
+          {
+            "text": "학교 계정 신청은 udjschool.ggm.kr에서 할 수 있습니다.",
+            "src": "audio/school/outro_1.wav",
+            "dur": 4.543,
+            "at": 140,
+            "frames": 273
+          }
+        ],
+        "sec": 7.582000000000001,
+        "from": 5901,
+        "frames": 455
+      }
+    ]
+  },
+  "school_admin": {
+    "version": "school_admin",
+    "fps": 60,
+    "frames": 8337,
+    "seconds": 138.95,
+    "chapterBar": false,
+    "out": "school/udj_school_admin.mp4",
+    "chapters": {
+      "c1": "서비스 소개",
+      "c2": "학교 계정 시작하기",
+      "c3": "학교 관리 화면",
+      "c4": "담당 선생님 업무",
+      "c5": "학생 서비스",
+      "c6": "학교와 학생의 연결",
+      "c7": "도입 후 운영 흐름",
+      "c8": "마무리"
+    },
+    "scenes": [
+      {
+        "id": "card_admin",
+        "chapter": "c3",
+        "card": "학교 관리자 기능",
+        "gap": 0.45,
+        "lines": [
+          {
+            "text": "학교 계정으로 사용하는 학교 관리 화면을 소개합니다.",
+            "src": "audio/school/card_admin_0.wav",
+            "dur": 3.042,
+            "at": 30,
+            "frames": 183
+          }
+        ],
+        "sec": 4.5,
+        "from": 0,
+        "frames": 270
+      },
+      {
+        "id": "overview",
+        "chapter": "c3",
+        "card": null,
+        "gap": 1.95,
+        "lines": [
+          {
+            "text": "학교 관리 화면은 통계, 학교 정보, 문의 관리, 학교일정등록, 취업/진학 정보, 노출 플랜의 여섯 개 탭으로 구성됩니다.",
+            "src": "audio/school/overview_0.wav",
+            "dur": 8.653,
+            "at": 30,
+            "frames": 519
+          },
+          {
+            "text": "상단에는 이용 중인 플랜의 남은 기간이 표시됩니다.",
+            "src": "audio/school/overview_1.wav",
+            "dur": 3.091,
+            "at": 666,
+            "frames": 185
+          }
+        ],
+        "sec": 16.394,
+        "from": 270,
+        "frames": 984
+      },
+      {
+        "id": "profile",
+        "chapter": "c3",
+        "card": null,
+        "gap": 2.7,
+        "lines": [
+          {
+            "text": "학교 정보 탭에서는 나이스에서 받아온 기본 정보 외에, 학교가 직접 소개할 내용을 입력합니다.",
+            "src": "audio/school/profile_0.wav",
+            "dur": 5.874,
+            "at": 30,
+            "frames": 352
+          },
+          {
+            "text": "검색 결과에 보이는 한 줄 소개와 대표 이미지, 기숙사 운영 여부를 입력하고,",
+            "src": "audio/school/profile_1.wav",
+            "dur": 5.16,
+            "at": 544,
+            "frames": 310
+          },
+          {
+            "text": "상세 페이지에 보이는 개설 학과와 학교 소개, 실습 시설, 소개 영상을 등록합니다.",
+            "src": "audio/school/profile_2.wav",
+            "dur": 5.899,
+            "at": 1016,
+            "frames": 354
+          },
+          {
+            "text": "저장하면 학생과 학부모가 보는 학교 페이지에 바로 반영됩니다.",
+            "src": "audio/school/profile_3.wav",
+            "dur": 3.959,
+            "at": 1532,
+            "frames": 238
+          }
+        ],
+        "sec": 32.442,
+        "from": 1254,
+        "frames": 1947
+      },
+      {
+        "id": "stats",
+        "chapter": "c3",
+        "card": null,
+        "gap": 1.95,
+        "lines": [
+          {
+            "text": "통계 탭에서는 학교 페이지의 누적 조회수와 즐겨찾기 수, 같은 지역·계열 안에서의 노출 순서를 확인합니다.",
+            "src": "audio/school/stats_0.wav",
+            "dur": 7.339,
+            "at": 30,
+            "frames": 440
+          },
+          {
+            "text": "아래 그래프에서는 최근 14일 동안의 일별 조회수를 볼 수 있습니다.",
+            "src": "audio/school/stats_1.wav",
+            "dur": 4.429,
+            "at": 587,
+            "frames": 266
+          }
+        ],
+        "sec": 16.418,
+        "from": 3201,
+        "frames": 985
+      },
+      {
+        "id": "plan",
+        "chapter": "c3",
+        "card": null,
+        "gap": 1.7833333333333332,
+        "lines": [
+          {
+            "text": "노출 플랜 탭에서는 현재 사용 중인 기능과 플랜별 혜택을 확인하고 플랜을 신청합니다.",
+            "src": "audio/school/plan_0.wav",
+            "dur": 5.611,
+            "at": 30,
+            "frames": 337
+          },
+          {
+            "text": "학교 정보 등록과 문의 답변은 모든 플랜에서 쓸 수 있고, 학교 일정 등록과 취업/진학 정보 공개는 플랜 혜택입니다.",
+            "src": "audio/school/plan_1.wav",
+            "dur": 7.221,
+            "at": 474,
+            "frames": 433
+          },
+          {
+            "text": "신청 후 입금이 확인되면 관리자가 승인하며, 신청 내역에서 견적서와 계약서, 명세서를 확인할 수 있습니다.",
+            "src": "audio/school/plan_2.wav",
+            "dur": 7.502,
+            "at": 1014,
+            "frames": 450
+          }
+        ],
+        "sec": 26.433999999999997,
+        "from": 4186,
+        "frames": 1586
+      },
+      {
+        "id": "connect",
+        "chapter": "c6",
+        "card": null,
+        "gap": 1.25,
+        "lines": [
+          {
+            "text": "학교 계정에서 입력한 정보는 학생이 보는 화면과 이렇게 연결됩니다.",
+            "src": "audio/school/connect_0.wav",
+            "dur": 4.289,
+            "at": 30,
+            "frames": 257
+          },
+          {
+            "text": "학교 정보는 검색 결과와 학교 페이지에, 학교 일정은 일정 모아보기와 즐겨찾기 D-day에, 취업/진학 정보는 공개 페이지에 나타납니다.",
+            "src": "audio/school/connect_1.wav",
+            "dur": 9.075,
+            "at": 362,
+            "frames": 544
+          },
+          {
+            "text": "학생과 학부모의 문의는 문의 관리로 들어오고, 학교의 답변은 문의자의 이메일로 전달됩니다.",
+            "src": "audio/school/connect_2.wav",
+            "dur": 5.744,
+            "at": 982,
+            "frames": 345
+          },
+          {
+            "text": "학교 페이지 조회와 즐겨찾기는 학교 통계에 집계됩니다.",
+            "src": "audio/school/connect_3.wav",
+            "dur": 3.399,
+            "at": 1401,
+            "frames": 204
+          },
+          {
+            "text": "학교 계정은 학생 개인을 관리하는 계정이 아니라, 학교를 소개하고 문의에 답하는 계정입니다.",
+            "src": "audio/school/connect_4.wav",
+            "dur": 5.668,
+            "at": 1680,
+            "frames": 340
+          }
+        ],
+        "sec": 35.175,
+        "from": 5772,
+        "frames": 2110
+      },
+      {
+        "id": "outro",
+        "chapter": "c8",
+        "card": null,
+        "gap": 0.45,
+        "lines": [
+          {
+            "text": "우리동네 직업계고.",
+            "src": "audio/school/outro_0.wav",
+            "dur": 1.389,
+            "at": 30,
+            "frames": 83
+          },
+          {
+            "text": "학교 계정 신청은 udjschool.ggm.kr에서 할 수 있습니다.",
+            "src": "audio/school/outro_1.wav",
+            "dur": 4.543,
+            "at": 140,
+            "frames": 273
+          }
+        ],
+        "sec": 7.582000000000001,
+        "from": 7882,
+        "frames": 455
+      }
+    ]
+  },
+  "teacher_guide": {
+    "version": "teacher_guide",
+    "fps": 60,
+    "frames": 10283,
+    "seconds": 171.38,
+    "chapterBar": false,
+    "out": "teacher/udj_teacher_guide.mp4",
+    "chapters": {
+      "c1": "서비스 소개",
+      "c2": "학교 계정 시작하기",
+      "c3": "학교 관리 화면",
+      "c4": "담당 선생님 업무",
+      "c5": "학생 서비스",
+      "c6": "학교와 학생의 연결",
+      "c7": "도입 후 운영 흐름",
+      "c8": "마무리"
+    },
+    "scenes": [
+      {
+        "id": "card_teacher",
+        "chapter": "c4",
+        "card": "담당 선생님 업무 가이드",
+        "gap": 0.45,
+        "lines": [
+          {
+            "text": "학교 계정을 맡은 담당 선생님을 위한 업무 가이드입니다.",
+            "src": "audio/school/card_teacher_0.wav",
+            "dur": 3.485,
+            "at": 30,
+            "frames": 209
+          }
+        ],
+        "sec": 4.685,
+        "from": 0,
+        "frames": 281
+      },
+      {
+        "id": "tasks",
+        "chapter": "c4",
+        "card": null,
+        "gap": 0.95,
+        "lines": [
+          {
+            "text": "다음은 학교 계정을 맡은 담당 선생님이 자주 처리하는 업무입니다.",
+            "src": "audio/school/tasks_0.wav",
+            "dur": 4.138,
+            "at": 30,
+            "frames": 248
+          },
+          {
+            "text": "학교 계정으로 로그인해 문의 답변, 학교 일정 등록, 취업·진학 정보 입력을 처리합니다.",
+            "src": "audio/school/tasks_1.wav",
+            "dur": 5.777,
+            "at": 335,
+            "frames": 347
+          }
+        ],
+        "sec": 12.564999999999998,
+        "from": 281,
+        "frames": 754
+      },
+      {
+        "id": "inquiry",
+        "chapter": "c4",
+        "card": null,
+        "gap": 2.25,
+        "lines": [
+          {
+            "text": "학생이나 학부모가 학교 페이지에서 문의를 남기면,",
+            "src": "audio/school/inquiry_0.wav",
+            "dur": 3.054,
+            "at": 30,
+            "frames": 183
+          },
+          {
+            "text": "문의 관리 탭에 답변 대기 상태로 표시됩니다.",
+            "src": "audio/school/inquiry_1.wav",
+            "dur": 2.752,
+            "at": 348,
+            "frames": 165
+          },
+          {
+            "text": "답변을 입력하고 저장하면 문의자가 남긴 이메일로 답변이 발송되며, 파일을 첨부할 수도 있습니다.",
+            "src": "audio/school/inquiry_2.wav",
+            "dur": 6.249,
+            "at": 648,
+            "frames": 375
+          },
+          {
+            "text": "새 문의 알림 받기에 이메일을 등록해 두면, 문의가 들어올 때 알림 메일을 받을 수 있습니다.",
+            "src": "audio/school/inquiry_3.wav",
+            "dur": 5.925,
+            "at": 1158,
+            "frames": 356
+          },
+          {
+            "text": "처리가 끝난 문의는 삭제할 수 있고, 접수 후 1년이 지난 문의는 자동으로 파기됩니다.",
+            "src": "audio/school/inquiry_4.wav",
+            "dur": 5.402,
+            "at": 1649,
+            "frames": 324
+          }
+        ],
+        "sec": 35.382,
+        "from": 1035,
+        "frames": 2123
+      },
+      {
+        "id": "events",
+        "chapter": "c4",
+        "card": null,
+        "gap": 2.7833333333333337,
+        "lines": [
+          {
+            "text": "학교일정등록 탭에서는 학교 설명회와 참가 행사 일정을 등록합니다.",
+            "src": "audio/school/events_0.wav",
+            "dur": 4.576,
+            "at": 30,
+            "frames": 275
+          },
+          {
+            "text": "일정 종류와 이름, 날짜와 시간, 장소를 입력해 추가하면,",
+            "src": "audio/school/events_1.wav",
+            "dur": 4.582,
+            "at": 472,
+            "frames": 275
+          },
+          {
+            "text": "학교 일정 모아보기와 학교 페이지, 그리고 이 학교를 즐겨찾기한 학생의 화면에 D-day로 표시됩니다.",
+            "src": "audio/school/events_2.wav",
+            "dur": 6.364,
+            "at": 913,
+            "frames": 382
+          }
+        ],
+        "sec": 24.621999999999996,
+        "from": 3158,
+        "frames": 1477
+      },
+      {
+        "id": "admission",
+        "chapter": "c4",
+        "card": null,
+        "gap": 2.45,
+        "lines": [
+          {
+            "text": "취업/진학 정보 탭에서는 졸업 연도별 진로 자료를 입력합니다.",
+            "src": "audio/school/admission_0.wav",
+            "dur": 4.069,
+            "at": 30,
+            "frames": 244
+          },
+          {
+            "text": "졸업생 수와 진학·취업 인원, 대학과 학과별 진학 인원, 취업 분야와 주요 취업처를 입력하고,",
+            "src": "audio/school/admission_1.wav",
+            "dur": 6.836,
+            "at": 421,
+            "frames": 410
+          },
+          {
+            "text": "대학별 자료는 엑셀 파일로 한 번에 올릴 수 있습니다.",
+            "src": "audio/school/admission_2.wav",
+            "dur": 3.448,
+            "at": 978,
+            "frames": 207
+          },
+          {
+            "text": "공개 범위를 정하면, 입력한 자료가 그래프로 정리된 취업/진학 정보 페이지로 공개됩니다.",
+            "src": "audio/school/admission_3.wav",
+            "dur": 5.556,
+            "at": 1332,
+            "frames": 333
+          }
+        ],
+        "sec": 30.459,
+        "from": 4635,
+        "frames": 1828
+      },
+      {
+        "id": "press",
+        "chapter": "c4",
+        "card": null,
+        "gap": 2.95,
+        "lines": [
+          {
+            "text": "특성화고신문에 올린 보도자료는 기사 제목의 학교 이름으로 연결되어, 학교 페이지의 특성화고신문 기사에 자동으로 표시됩니다.",
+            "src": "audio/school/press_0.wav",
+            "dur": 8.033,
+            "at": 30,
+            "frames": 482
+          },
+          {
+            "text": "특성화고신문에 보도자료를 올리는 권한이 필요하면, 사이트 하단의 전화번호나 이메일로 문의해 주세요.",
+            "src": "audio/school/press_1.wav",
+            "dur": 6.236,
+            "at": 689,
+            "frames": 374
+          }
+        ],
+        "sec": 20.918999999999997,
+        "from": 6463,
+        "frames": 1255
+      },
+      {
+        "id": "connect",
+        "chapter": "c6",
+        "card": null,
+        "gap": 1.25,
+        "lines": [
+          {
+            "text": "학교 계정에서 입력한 정보는 학생이 보는 화면과 이렇게 연결됩니다.",
+            "src": "audio/school/connect_0.wav",
+            "dur": 4.289,
+            "at": 30,
+            "frames": 257
+          },
+          {
+            "text": "학교 정보는 검색 결과와 학교 페이지에, 학교 일정은 일정 모아보기와 즐겨찾기 D-day에, 취업/진학 정보는 공개 페이지에 나타납니다.",
+            "src": "audio/school/connect_1.wav",
+            "dur": 9.075,
+            "at": 362,
+            "frames": 544
+          },
+          {
+            "text": "학생과 학부모의 문의는 문의 관리로 들어오고, 학교의 답변은 문의자의 이메일로 전달됩니다.",
+            "src": "audio/school/connect_2.wav",
+            "dur": 5.744,
+            "at": 982,
+            "frames": 345
+          },
+          {
+            "text": "학교 페이지 조회와 즐겨찾기는 학교 통계에 집계됩니다.",
+            "src": "audio/school/connect_3.wav",
+            "dur": 3.399,
+            "at": 1401,
+            "frames": 204
+          },
+          {
+            "text": "학교 계정은 학생 개인을 관리하는 계정이 아니라, 학교를 소개하고 문의에 답하는 계정입니다.",
+            "src": "audio/school/connect_4.wav",
+            "dur": 5.668,
+            "at": 1680,
+            "frames": 340
+          }
+        ],
+        "sec": 35.175,
+        "from": 7718,
+        "frames": 2110
+      },
+      {
+        "id": "outro",
+        "chapter": "c8",
+        "card": null,
+        "gap": 0.45,
+        "lines": [
+          {
+            "text": "우리동네 직업계고.",
+            "src": "audio/school/outro_0.wav",
+            "dur": 1.389,
+            "at": 30,
+            "frames": 83
+          },
+          {
+            "text": "학교 계정 신청은 udjschool.ggm.kr에서 할 수 있습니다.",
+            "src": "audio/school/outro_1.wav",
+            "dur": 4.543,
+            "at": 140,
+            "frames": 273
+          }
+        ],
+        "sec": 7.582000000000001,
+        "from": 9828,
+        "frames": 455
+      }
+    ]
+  },
+  "student_service": {
+    "version": "student_service",
+    "fps": 60,
+    "frames": 6926,
+    "seconds": 115.43,
+    "chapterBar": false,
+    "out": "student/udj_student_service.mp4",
+    "chapters": {
+      "c1": "서비스 소개",
+      "c2": "학교 계정 시작하기",
+      "c3": "학교 관리 화면",
+      "c4": "담당 선생님 업무",
+      "c5": "학생 서비스",
+      "c6": "학교와 학생의 연결",
+      "c7": "도입 후 운영 흐름",
+      "c8": "마무리"
+    },
+    "scenes": [
+      {
+        "id": "card_student",
+        "chapter": "c5",
+        "card": "학생 서비스",
+        "gap": 0.45,
+        "lines": [
+          {
+            "text": "학생과 학부모가 이용하는 우리동네 직업계고 서비스를 소개합니다.",
+            "src": "audio/school/card_student_0.wav",
+            "dur": 4.119,
+            "at": 30,
+            "frames": 247
+          }
+        ],
+        "sec": 5.319,
+        "from": 0,
+        "frames": 319
+      },
+      {
+        "id": "student",
+        "chapter": "c5",
+        "card": null,
+        "gap": 1.5611111111111111,
+        "lines": [
+          {
+            "text": "이번에는 학생에게 우리동네 직업계고를 안내할 때 보여 줄 수 있는 기능입니다.",
+            "src": "audio/school/student_0.wav",
+            "dur": 5.023,
+            "at": 30,
+            "frames": 301
+          },
+          {
+            "text": "학교 검색에서는 지역과 학교 계열, 학과 계열 조건으로 전국 직업계고를 찾고, 지도로 위치를 확인합니다.",
+            "src": "audio/school/student_1.wav",
+            "dur": 7.333,
+            "at": 425,
+            "frames": 440
+          },
+          {
+            "text": "학교 페이지에서는 학교가 입력한 개설 학과와 학교 설명회 일정을 보고, 학교에 바로 문의할 수 있습니다.",
+            "src": "audio/school/student_2.wav",
+            "dur": 6.677,
+            "at": 959,
+            "frames": 401
+          },
+          {
+            "text": "학교 일정 메뉴에서는 전국 직업계고의 학교 설명회와 참가 행사를 지역별로 모아 볼 수 있습니다.",
+            "src": "audio/school/student_3.wav",
+            "dur": 6.057,
+            "at": 1453,
+            "frames": 363
+          },
+          {
+            "text": "관심 있는 학교는 최대 세 곳까지 나란히 비교할 수 있습니다.",
+            "src": "audio/school/student_4.wav",
+            "dur": 3.805,
+            "at": 1910,
+            "frames": 228
+          },
+          {
+            "text": "진로 테스트는 36개 문항에 답하면 관심 분야와 추천 학과, 통학 가능한 학교를 알려 줍니다.",
+            "src": "audio/school/student_5.wav",
+            "dur": 6.291,
+            "at": 2232,
+            "frames": 377
+          },
+          {
+            "text": "학생 회원가입은 휴대폰 인증으로 진행하며, 만 14세 미만은 보호자 동의를 거칩니다.",
+            "src": "audio/school/student_6.wav",
+            "dur": 5.703,
+            "at": 2703,
+            "frames": 342
+          },
+          {
+            "text": "학생 계정으로 로그인하면 관심 학교를 즐겨찾기하고 메모를 남기며, 즐겨찾기한 학교의 일정을 D-day로 확인할 수 있습니다.",
+            "src": "audio/school/student_7.wav",
+            "dur": 7.783,
+            "at": 3139,
+            "frames": 467
+          },
+          {
+            "text": "학교 검색과 진로 테스트는 로그인하지 않아도 이용할 수 있습니다.",
+            "src": "audio/school/student_8.wav",
+            "dur": 3.897,
+            "at": 3700,
+            "frames": 234
+          }
+        ],
+        "sec": 67.36900000000001,
+        "from": 319,
+        "frames": 4042
+      },
+      {
+        "id": "connect",
+        "chapter": "c6",
+        "card": null,
+        "gap": 1.25,
+        "lines": [
+          {
+            "text": "학교 계정에서 입력한 정보는 학생이 보는 화면과 이렇게 연결됩니다.",
+            "src": "audio/school/connect_0.wav",
+            "dur": 4.289,
+            "at": 30,
+            "frames": 257
+          },
+          {
+            "text": "학교 정보는 검색 결과와 학교 페이지에, 학교 일정은 일정 모아보기와 즐겨찾기 D-day에, 취업/진학 정보는 공개 페이지에 나타납니다.",
+            "src": "audio/school/connect_1.wav",
+            "dur": 9.075,
+            "at": 362,
+            "frames": 544
+          },
+          {
+            "text": "학생과 학부모의 문의는 문의 관리로 들어오고, 학교의 답변은 문의자의 이메일로 전달됩니다.",
+            "src": "audio/school/connect_2.wav",
+            "dur": 5.744,
+            "at": 982,
+            "frames": 345
+          },
+          {
+            "text": "학교 페이지 조회와 즐겨찾기는 학교 통계에 집계됩니다.",
+            "src": "audio/school/connect_3.wav",
+            "dur": 3.399,
+            "at": 1401,
+            "frames": 204
+          },
+          {
+            "text": "학교 계정은 학생 개인을 관리하는 계정이 아니라, 학교를 소개하고 문의에 답하는 계정입니다.",
+            "src": "audio/school/connect_4.wav",
+            "dur": 5.668,
+            "at": 1680,
+            "frames": 340
+          }
+        ],
+        "sec": 35.175,
+        "from": 4361,
+        "frames": 2110
+      },
+      {
+        "id": "outro",
+        "chapter": "c8",
+        "card": null,
+        "gap": 0.45,
+        "lines": [
+          {
+            "text": "우리동네 직업계고.",
+            "src": "audio/school/outro_0.wav",
+            "dur": 1.389,
+            "at": 30,
+            "frames": 83
+          },
+          {
+            "text": "학교 계정 신청은 udjschool.ggm.kr에서 할 수 있습니다.",
+            "src": "audio/school/outro_1.wav",
+            "dur": 4.543,
+            "at": 140,
+            "frames": 273
+          }
+        ],
+        "sec": 7.582000000000001,
+        "from": 6471,
+        "frames": 455
+      }
+    ]
+  }
+}

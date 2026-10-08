@@ -15,6 +15,7 @@
 쓰기:
     python scripts/build_deploy_zip.py                  # hs-portal.zip (UDJ 백엔드)
     python scripts/build_deploy_zip.py --target work    # workwoori.zip (업무 시스템)
+    python scripts/build_deploy_zip.py --target diary   # diary.zip (기록해)
     python scripts/build_deploy_zip.py --include diary-backend
 """
 
@@ -50,6 +51,20 @@ FORBIDDEN_RE = re.compile(
 )
 # 이름에 secret/key 가 들어가도 괜찮은 것들(예제·설정 견본).
 FORBIDDEN_OK = re.compile(r"env\.example$|\.env\.example$", re.I)
+
+
+def unix_info(src: Path, arc: str) -> zipfile.ZipInfo:
+    """리눅스 권한을 박아 넣은 항목.
+
+    **왜.** 윈도에서 z.write() 로 담으면 윈도가 알려주는 권한(0o666, 누구나
+    쓰기)이 그대로 들어가고, 서버의 unzip 이 그걸 그대로 풀었다(2026-09-19,
+    index.html 이 -rw-rw-rw- 가 됐다). 파일은 644, 셸 스크립트만 755 로 못 박는다.
+    """
+    info = zipfile.ZipInfo.from_file(src, arc)
+    info.create_system = 3   # 3 = 유닉스. 0(윈도)이면 unzip 이 권한을 멋대로 읽는다
+    mode = 0o755 if arc.endswith(".sh") else 0o644
+    info.external_attr = (0o100000 | mode) << 16
+    return info
 
 
 def collect(base: Path, prefix: str) -> list[tuple[Path, str]]:
@@ -104,6 +119,15 @@ TARGETS = {
                  "frontend-journal/dist/index.html", "frontend-research/dist/index.html",
                  "frontend-work/index.html", "frontend-work/settlement.js",
                  "deploy/work-backend.service", "deploy/nginx-work.conf"],
+    },
+    # 기록해 (diary.ggm.kr) — 백엔드와 화면(빌드 결과)만. UDJ 는 건드리지 않는다.
+    "diary": {
+        "out": "diary.zip",
+        "trees": [("diary-backend", "diary-backend"),
+                  ("frontend-journal/dist", "frontend-journal/dist")],
+        "files": [],
+        "must": ["diary-backend/app/main.py", "diary-backend/app/models.py",
+                 "diary-backend/requirements.txt", "frontend-journal/dist/index.html"],
     },
     # 우리업무 (workwoori.ggm.kr) — 별도 프로세스라 이 안에 다 들어 있다.
     "work": {
@@ -160,7 +184,7 @@ def main() -> int:
     tmp = Path(_tmp_name)
     with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
         for src, arc in items:
-            z.write(src, arc)
+            z.writestr(unix_info(src, arc), src.read_bytes(), zipfile.ZIP_DEFLATED)
 
     # ── 담은 것을 다시 열어서 검사한다 ──────────────────────────────────────
     names = zipfile.ZipFile(tmp).namelist()

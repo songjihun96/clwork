@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import SchoolNoticeSettings from "../components/SchoolNoticeSettings";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
@@ -118,6 +119,8 @@ export default function SchoolHome() {
         <Card label="선생님께 제출" value={d.submitted} unit="건" />
         <Card label="자기소개서" value={d.cover_letters} unit="건" />
       </Group>
+
+      <div style={{ marginTop: 24 }}><SchoolNoticeSettings /></div>
 
       {d.never_wrote > 0 && (
         <p className="meta" style={{ marginTop: 6, lineHeight: 1.7 }}>

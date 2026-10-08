@@ -1,0 +1,7 @@
+src/node_modules/
+src/review/
+src/render.log
+src/script/.export.cjs
+src/render_school.log
+src/render15.log
+src/.render_chunks/

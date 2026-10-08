@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth";
 import { homeFor } from "../App";
 
@@ -8,6 +8,10 @@ import { homeFor } from "../App";
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  // 로그인이 필요해 보내진 경우 끝나면 그 화면으로 돌아간다. 우리 사이트 안 경로만.
+  const [search] = useSearchParams();
+  const rawNext = search.get("next") || "";
+  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -20,7 +24,7 @@ export default function Login() {
     try {
       const me = await login(email.trim(), password);
       // 역할마다 쓸 수 있는 화면이 달라 각자의 시작 화면으로 보낸다.
-      navigate(homeFor(me), { replace: true });
+      navigate(next && me.role === "student" ? next : homeFor(me), { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -57,7 +61,7 @@ export default function Login() {
       </form>
 
       <p style={{ fontSize: 13, color: "var(--steel)", marginTop: 16, lineHeight: 1.8 }}>
-        계정이 없으신가요? <Link to="/signup">회원가입</Link><br />
+        계정이 없으신가요? <Link to={next ? `/signup?next=${encodeURIComponent(next)}` : "/signup"}>회원가입</Link><br />
         비밀번호를 잊으셨다면{" "}
         <a href="https://udjschool.ggm.kr/find-account">계정 찾기</a>를 이용해주세요.
       </p>

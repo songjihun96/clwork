@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import SchoolAccountNotice from "../components/SchoolAccountNotice";
 import { useAuth } from "../auth";
 
 export default function Login() {
@@ -55,14 +56,12 @@ export default function Login() {
       </form>
 
       <p style={{ fontSize: 13.5, color: "var(--steel)", marginTop: 18 }}>
-        학생 계정이 없다면 <Link to="/signup" style={{ color: "var(--ink)", fontWeight: 600 }}>회원가입</Link>
+        학생 계정이 없다면 <Link to={next ? `/signup?next=${encodeURIComponent(next)}` : "/signup"} style={{ color: "var(--ink)", fontWeight: 600 }}>회원가입</Link>
         {" · "}
         <Link to="/find-account" style={{ color: "var(--ink)", fontWeight: 600 }}>아이디·비밀번호 찾기</Link>
       </p>
 
-      <div className="notice notice-info" style={{ marginTop: 20 }}>
-        학교 계정은 직접 가입할 수 없습니다. 포털 관리자가 학교를 확인한 뒤 계정을 만들어 전달합니다.
-      </div>
+      <SchoolAccountNotice style={{ marginTop: 20 }} />
     </div>
   );
 }

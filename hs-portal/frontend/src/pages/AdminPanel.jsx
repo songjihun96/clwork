@@ -3,7 +3,8 @@ import {
   Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { Link } from "react-router-dom";
-import NoticeComposer from "../components/NoticeComposer";
+import NoticeManager from "../components/NoticeManager";
+import { kstDate } from "../components/NoticeSettings";
 import { ApplicationsPanel } from "./AdminApplications";
 import { api, PLAN_LABEL, ROLE_LABEL } from "../api";
 import { errMsg, okMsg, toast } from "../toast";
@@ -970,6 +971,9 @@ function SchoolManageTab() {
           </div>
 
           <div style={{ display: "grid", gap: 12 }}>
+            <SchoolRegionEmployers key={detail.id} detail={detail} onSaved={refresh} setMsg={setMsg} />
+            <SchoolLevelContact key={`lc-${detail.id}`} detail={detail} onSaved={refresh} setMsg={setMsg} />
+
             <div style={{ border: "1px solid var(--line)", borderRadius: "var(--radius)", padding: 14 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <div style={{ flex: 1 }}>
@@ -1038,6 +1042,184 @@ function SchoolManageTab() {
         </div>
       )}
     </div>
+  );
+}
+
+/** 학교급(중·고)과 우리동네직업계고 담당 선생님. 중학교로 바꾸면 공개 목록에서 숨겨진다. */
+function SchoolLevelContact({ detail, onSaved, setMsg }) {
+  const [level, setLevel] = useState(detail.school_level || "high");
+  const [c, setC] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api.adminSchoolContact(detail.id)
+      .then((r) => setC(r.contact || { name: "", position: "", email: "", phone: "", is_active: true, consent: false }))
+      .catch(() => setC({ name: "", position: "", email: "", phone: "", is_active: true, consent: false }));
+  }, [detail.id]);
+  const box = { border: "1px solid var(--line)", borderRadius: "var(--radius)", padding: 14 };
+  const saveLevel = async () => {
+    if (level === "middle" && !window.confirm("중학교로 바꾸면 이 학교는 직업계고 공개 목록에서 숨겨지고, 학교 계정은 중학교 화면으로 바뀝니다. 바꿀까요?")) return;
+    setBusy(true);
+    try { await api.setSchoolLevel(detail.id, level); setMsg(okMsg("학교급을 바꿨습니다.")); onSaved(); }
+    catch (e) { setMsg(errMsg(e.message)); } finally { setBusy(false); }
+  };
+  const saveContact = async () => {
+    setBusy(true);
+    try { const r = await api.saveAdminSchoolContact(detail.id, c); setC(r.contact); setMsg(okMsg("담당 선생님을 저장했습니다.")); }
+    catch (e) { setMsg(errMsg(e.message)); } finally { setBusy(false); }
+  };
+  const cs = (k) => (e) => setC({ ...c, [k]: e.target.value });
+  return (
+    <>
+      <div style={box}>
+        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8 }}>학교급</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <select className="input" style={{ width: "auto" }} value={level} onChange={(e) => setLevel(e.target.value)}>
+            <option value="high">고등학교</option>
+            <option value="middle">중학교</option>
+          </select>
+          <button className="btn btn-sm" disabled={busy || level === (detail.school_level || "high")} onClick={saveLevel}>학교급 저장</button>
+          <span style={{ fontSize: 12.5, color: "var(--steel)" }}>중학교 학교 계정은 진학 지원 화면만 쓰고, 고등학교 관리 기능은 막힙니다.</span>
+        </div>
+      </div>
+      {(detail.school_level || "high") === "high" && c && (
+        <div style={box}>
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>우리동네직업계고 담당 선생님</div>
+          <p style={{ fontSize: 12.5, color: "var(--steel)", margin: "0 0 8px" }}>
+            '우리동네직업계고 공지'를 이메일·문자로 받는 분입니다. <b>공지 수신 동의가 있어야 보냅니다.</b>
+            {" "}{c.consent_at
+              ? `현재: 동의 ${kstDate(c.consent_at)}(${({ school: "학교 화면", request: "계정 신청서", admin: "운영자 확인" })[c.consent_source] || "기록"})`
+              : "현재: 동의 없음(발송 제외)"}
+          </p>
+          <div className="nm-grid">
+            <input className="input" placeholder="이름" value={c.name} maxLength={40} onChange={cs("name")} />
+            <input className="input" placeholder="직위" value={c.position} maxLength={40} onChange={cs("position")} />
+            <input className="input" placeholder="이메일" value={c.email} maxLength={120} onChange={cs("email")} />
+            <input className="input" placeholder="휴대폰" value={c.phone} maxLength={30} onChange={cs("phone")} />
+          </div>
+          <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+            <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13.5 }}>
+              <input type="checkbox" checked={c.is_active} onChange={(e) => setC({ ...c, is_active: e.target.checked })} />
+              발송 대상(끄면 공지를 보내지 않음)
+            </label>
+            <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13.5 }}>
+              <input type="checkbox" checked={!!c.consent} onChange={(e) => setC({ ...c, consent: e.target.checked })} />
+              담당 선생님 본인에게 공지 수신 동의를 받았음
+            </label>
+            <button className="btn btn-sm" disabled={busy} onClick={saveContact}>담당 선생님 저장</button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** 학교 계정 목록: 학교급·이용 상태로 거르고 학교명·학교코드·담당자·이메일로 찾는다.
+ *  승인 대기·승인 완료는 '학교 계정 신청' 탭에서 거른다. */
+function SchoolAccountsTab() {
+  const [level, setLevel] = useState("");
+  const [status, setStatus] = useState("");
+  const [q, setQ] = useState("");
+  const [data, setData] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const load = () => api.adminSchoolAccounts({ level, status, q: q.trim() })
+    .then(setData).catch((e) => setMsg(errMsg(e.message)));
+  useEffect(() => { load(); }, [level, status]);
+  const changeLevel = async (row, v) => {
+    if (v === "middle" && !window.confirm(`${row.school_name}을(를) 중학교로 바꾸면 공개 목록에서 숨겨집니다. 바꿀까요?`)) return;
+    try { await api.setSchoolLevel(row.school_id, v); setMsg(okMsg("학교급을 바꿨습니다.")); load(); }
+    catch (e) { setMsg(errMsg(e.message)); }
+  };
+  return (
+    <div className="panel">
+      <h3>학교 계정</h3>
+      <p style={{ fontSize: 13, color: "var(--steel)", marginTop: -4, lineHeight: 1.7 }}>
+        기존 학교는 모두 고등학교로 들어 있습니다. 중학교 계정이 고등학교로 잘못 잡혀 있으면 여기서 바로 바꿉니다.
+        {data && ` · 고등학교 ${data.counts.high} · 중학교 ${data.counts.middle}`}
+      </p>
+      {msg && <div className={`notice notice-${msg.type}`} style={{ marginBottom: 10 }}>{msg.text}</div>}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+        {[["", "전체"], ["high", "고등학교"], ["middle", "중학교"]].map(([k, l]) => (
+          <button key={k} className={`btn btn-sm ${level === k ? "btn-primary" : "btn-ghost"}`} onClick={() => setLevel(k)}>{l}</button>
+        ))}
+        <select className="select" style={{ width: "auto" }} value={status} onChange={(e) => setStatus(e.target.value)}>
+          <option value="">전체 상태</option>
+          <option value="active">이용중</option>
+          <option value="inactive">이용중지</option>
+        </select>
+        <input className="input" style={{ width: 220 }} value={q} placeholder="학교명·학교코드·담당자·이메일"
+          onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && load()} />
+        <button className="btn btn-ghost btn-sm" onClick={load}>찾기</button>
+      </div>
+      {!data ? <p className="label">불러오는 중…</p> : data.items.length === 0 ? (
+        <p className="label">해당하는 학교 계정이 없습니다.</p>
+      ) : (
+        <div className="nm-table-wrap">
+          <table className="table">
+            <thead><tr><th>학교</th><th>학교급</th><th>지역</th><th>담당자</th><th>아이디(이메일)</th><th>상태</th><th>공지 알림 메일</th></tr></thead>
+            <tbody>
+              {data.items.map((r) => (
+                <tr key={r.user_id}>
+                  <td><b>{r.school_name}</b>{r.school_code && <small className="label"> {r.school_code}</small>}</td>
+                  <td>
+                    <select className="select" style={{ width: "auto" }} value={r.school_level}
+                      onChange={(e) => changeLevel(r, e.target.value)} aria-label={`${r.school_name} 학교급`}>
+                      <option value="high">고등학교</option>
+                      <option value="middle">중학교</option>
+                    </select>
+                  </td>
+                  <td>{r.region}</td>
+                  <td>{r.manager_name}</td>
+                  <td>{r.email}</td>
+                  <td>{r.is_active ? <span className="badge badge-done">이용중</span> : <span className="badge">이용중지</span>}</td>
+                  <td className="label">{r.notice_email || "로그인 메일"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const SCHOOL_REGIONS = ["서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종",
+  "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"];
+
+/** 학교 지역. 학교 검색·인터뷰 지역 필터에 쓰인다.
+ *  (주요 취업처는 학교가 '취업/진학 정보' 탭에서만 입력한다.) */
+function SchoolRegionEmployers({ detail, onSaved, setMsg }) {
+  const [region, setRegion] = useState(detail.region || "");
+  const [busy, setBusy] = useState(false);
+  const saveRegion = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await api.updateSchool(detail.id, { region });
+      setMsg(okMsg(`지역을 '${region}'(으)로 바꿨습니다.`));
+      onSaved();
+    } catch (e) {
+      setMsg(errMsg(e.message));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const box = { border: "1px solid var(--line)", borderRadius: "var(--radius)", padding: 14 };
+  return (
+    <>
+      <div style={box}>
+        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8 }}>학교 지역</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <select className="input" style={{ width: "auto" }} value={region}
+            onChange={(e) => setRegion(e.target.value)}>
+            {!SCHOOL_REGIONS.includes(region) && <option value={region}>{region || "(없음)"}</option>}
+            {SCHOOL_REGIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+          <button className="btn btn-sm" disabled={busy || !region || region === detail.region}
+            onClick={saveRegion}>지역 저장</button>
+          <span style={{ fontSize: 12.5, color: "var(--steel)" }}>학교 검색·인터뷰 지역 필터에 쓰입니다.</span>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -1382,9 +1564,234 @@ function StatsTab({ stats }) {
   );
 }
 
+/** 학교 계정 발급 신청.
+ *
+ * 학교가 남긴 신청서를 보고 전화로 확인한 뒤 승인한다. 승인하는 순간 학교
+ * 계정이 만들어지고 임시 비밀번호가 메일로 나간다 — 되돌릴 수 없으니 한 번
+ * 더 묻는다. 담당자 연락처가 들어 있는 화면이라 관리자만 연다.
+ */
+function SchoolRequestsTab({ onCount }) {
+  const [rows, setRows] = useState([]);
+  const [statuses, setStatuses] = useState([]);
+  const [filter, setFilter] = useState("");
+  const [level, setLevel] = useState("");
+  const [msg, setMsg] = useState(null);
+  const [issued, setIssued] = useState(null);   // 승인 직후 임시 비밀번호
+  const [notes, setNotes] = useState({});
+
+  const load = () => api.adminSchoolRequests(filter || undefined, level || undefined).then((d) => {
+    setRows(d.items);
+    setStatuses(d.statuses);
+    if (onCount) onCount(d.open_count);
+  }).catch((e) => setMsg(errMsg(e.message)));
+
+  useEffect(() => { load(); }, [filter, level]);
+
+  const setStatus = async (r, status) => {
+    setMsg(null);
+    try {
+      await api.updateSchoolRequest(r.id, { status, admin_note: notes[r.id] ?? r.admin_note });
+      load();
+    } catch (e) { setMsg(errMsg(e.message)); }
+  };
+
+  const saveNote = async (r) => {
+    try {
+      await api.updateSchoolRequest(r.id, { admin_note: notes[r.id] ?? "" });
+      setMsg(okMsg("메모를 저장했습니다."));
+      load();
+    } catch (e) { setMsg(errMsg(e.message)); }
+  };
+
+  const approve = async (r) => {
+    const ok = window.confirm(
+      `[${r.school_level_label}] ${r.school_name} 학교 계정을 만들까요?\n\n아이디: ${r.manager_email}\n`
+      + (r.school_level === "middle" && !r.school_matched
+        ? "중학교는 학교 목록에 없어 숨김 학교로 함께 만들어집니다(공개 목록에는 나오지 않습니다).\n" : "")
+      + "임시 비밀번호가 이 주소로 발송됩니다. 되돌릴 수 없습니다.");
+    if (!ok) return;
+    setMsg(null);
+    try {
+      const res = await api.approveSchoolRequest(r.id);
+      setIssued({ ...res, school_name: r.school_name });
+      load();
+    } catch (e) { setMsg(errMsg(e.message)); }
+  };
+
+  const remove = async (r) => {
+    if (!window.confirm(`${r.school_name} 신청서를 지울까요? 담당자 연락처도 함께 지워집니다.`)) return;
+    try {
+      await api.deleteSchoolRequest(r.id);
+      load();
+    } catch (e) { setMsg(errMsg(e.message)); }
+  };
+
+  return (
+    <div style={{ display: "grid", gap: 16 }}>
+      {issued && (
+        <div className="panel" style={{ borderColor: "var(--signal)" }}>
+          <h3>{issued.school_name} 계정을 만들었습니다</h3>
+          <div className="kv-grid">
+            <div><span className="label">아이디</span><dd>{issued.email}</dd></div>
+            <div>
+              <span className="label">임시 비밀번호</span>
+              <dd><code style={{ fontSize: 16, fontWeight: 700, letterSpacing: 1 }}>{issued.temp_password}</code></dd>
+            </div>
+          </div>
+          <p style={{ fontSize: 13, lineHeight: 1.7, color: issued.mail_sent ? "var(--steel)" : "var(--color-danger)" }}>
+            {issued.mail_sent
+              ? "안내 메일을 보냈습니다. 전화로도 알려 주시면 확실합니다."
+              : `메일이 발송되지 않았습니다(${issued.mail_error}). 위 임시 비밀번호를 전화로 알려 주세요.`}
+            {" 학교는 첫 로그인에서 비밀번호를 바꿔야 합니다."}
+          </p>
+          <button className="btn btn-ghost btn-sm" onClick={() => setIssued(null)}>닫기</button>
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <select className="select" style={{ width: "auto" }} value={filter}
+          onChange={(e) => setFilter(e.target.value)}>
+          <option value="">전체 상태</option>
+          <option value="open">승인 대기</option>
+          {statuses.map((s) => <option key={s.key} value={s.key}>{s.key === "approved" ? "승인 완료" : s.label}</option>)}
+        </select>
+        <div style={{ display: "flex", gap: 4 }} role="group" aria-label="학교 유형">
+          {[["", "전체"], ["high", "고등학교"], ["middle", "중학교"]].map(([k, label]) => (
+            <button key={k} className={`btn btn-sm ${level === k ? "btn-primary" : "btn-ghost"}`}
+              onClick={() => setLevel(k)}>{label}</button>
+          ))}
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={load}>새로고침</button>
+      </div>
+
+      {msg && <div className={`notice notice-${msg.type}`}>{msg.text}</div>}
+
+      {rows.length === 0 ? (
+        <div className="empty"><p>신청이 없습니다.</p></div>
+      ) : rows.map((r) => (
+        <div className="panel" key={r.id}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+            <div>
+              <h3 style={{ marginBottom: 4 }}>
+                <span className={`badge ${r.school_level === "middle" ? "badge-dorm" : "badge-cat"}`}
+                  style={{ marginRight: 6 }}>{r.school_level_label}</span>
+                {r.school_name}
+                {!r.school_matched && <span className="badge" style={{ marginLeft: 8 }}>학교 미연결</span>}
+                <span className={`badge ${r.status === "approved" ? "badge-dorm" : ""}`}
+                  style={{ marginLeft: 6 }}>{r.status_label}</span>
+              </h3>
+              <span className="label">
+                {r.school_matched ? `${r.school_region} · ${r.school_category}`
+                  : r.school_level === "middle" ? `${r.region || "지역 미입력"} · 중학교(승인 시 숨김 학교로 만들어짐)`
+                    : "목록에 없는 학교 (직접 입력)"}
+                {" · 접수 "}{(r.created_at || "").slice(0, 16).replace("T", " ")}
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "flex-start" }}>
+              {r.status !== "approved" && (
+                <>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setStatus(r, "called")}>통화 완료</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setStatus(r, "rejected")}>반려</button>
+                  <button className="btn btn-signal btn-sm" onClick={() => approve(r)}>승인하고 계정 발급</button>
+                </>
+              )}
+              <button className="btn btn-ghost btn-sm" onClick={() => remove(r)}>삭제</button>
+            </div>
+          </div>
+
+          <div className="kv-grid" style={{ marginTop: 12 }}>
+            <div>
+              <span className="label">담당자</span>
+              <dd>{r.manager_name}{r.manager_position ? ` · ${r.manager_position}` : ""}</dd>
+            </div>
+            <div>
+              <span className="label">휴대전화</span>
+              <dd><a href={`tel:${r.manager_phone}`}>{r.manager_phone}</a></dd>
+            </div>
+            <div><span className="label">이메일 (아이디)</span><dd>{r.manager_email}</dd></div>
+            <div><span className="label">학교 대표번호</span><dd>{r.school_phone || "—"}</dd></div>
+            <div><span className="label">통화 가능 시간</span><dd>{r.call_time || "—"}</dd></div>
+            {r.school_level !== "middle" && (
+              <div><span className="label">공지 수신 동의(선택)</span><dd>{r.notice_consent ? "동의" : "동의 안 함"}</dd></div>
+            )}
+            <div>
+              <span className="label">안내 메일</span>
+              <dd>{r.status !== "approved" ? "—" : r.mail_sent ? "발송됨" : `실패: ${r.mail_error}`}</dd>
+            </div>
+          </div>
+
+          {r.existing_accounts.length > 0 && (
+            <div className="notice notice-info" style={{ marginTop: 10 }}>
+              이 학교에는 이미 학교 계정이 있습니다:{" "}
+              {r.existing_accounts.map((a) => `${a.email}${a.is_active ? "" : " (정지)"}`).join(", ")}.
+              담당자가 바뀐 경우가 아니면 기존 계정의 비밀번호를 재설정해 주세요.
+            </div>
+          )}
+          {!r.school_matched && r.status !== "approved" && r.school_level !== "middle" && (
+            <LinkSchool request={r} onDone={load} setMsg={setMsg} />
+          )}
+
+          <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+            <input className="input" placeholder="통화 내용·반려 사유 메모"
+              value={notes[r.id] ?? r.admin_note} maxLength={300}
+              onChange={(e) => setNotes({ ...notes, [r.id]: e.target.value })} />
+            <button className="btn btn-ghost btn-sm" onClick={() => saveNote(r)}>메모 저장</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 목록에 없는 학교로 신청한 건에 실제 학교를 이어 준다. 승인은 학교가
+ *  연결되어야만 된다 — 어느 학교의 계정인지 모르는 계정을 만들 수는 없다. */
+function LinkSchool({ request, onDone, setMsg }) {
+  const [q, setQ] = useState(request.school_name || "");
+  const [list, setList] = useState([]);
+
+  const search = async () => {
+    try {
+      const res = await api.schools({ name: q.trim(), size: 8 });
+      setList(res.items || []);
+      if ((res.items || []).length === 0) {
+        setMsg(errMsg("검색 결과가 없습니다. 학교 관리에서 먼저 등록해 주세요."));
+      }
+    } catch (e) { setMsg(errMsg(e.message)); }
+  };
+
+  const link = async (id) => {
+    try {
+      await api.linkSchoolRequest(request.id, id);
+      setMsg(okMsg("학교를 연결했습니다. 이제 승인할 수 있습니다."));
+      onDone();
+    } catch (e) { setMsg(errMsg(e.message)); }
+  };
+
+  return (
+    <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--line)" }}>
+      <span className="label">승인하려면 실제 학교를 연결해 주세요</span>
+      <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+        <input className="input" value={q} onChange={(e) => setQ(e.target.value)}
+          placeholder="학교 이름으로 검색" />
+        <button className="btn btn-ghost btn-sm" onClick={search}>검색</button>
+      </div>
+      {list.length > 0 && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+          {list.map((s) => (
+            <button key={s.id} className="btn btn-ghost btn-sm" onClick={() => link(s.id)}>
+              {s.name} <small>{s.region}</small>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminPanel() {
   const [tab, setTab] = useState("stats");
   const [subPending, setSubPending] = useState(0);
+  const [reqPending, setReqPending] = useState(0);
   const [stats, setStats] = useState(null);
   const [orders, setOrders] = useState([]);
   const [users, setUsers] = useState([]);
@@ -1414,15 +1821,21 @@ export default function AdminPanel() {
         <button className={`tab ${tab === "subs" ? "active" : ""}`} onClick={() => setTab("subs")}>
           구독 결제 {subPending > 0 && <span className="badge" style={{ background: "var(--alert)", color: "#fff", borderColor: "var(--alert)", marginLeft: 4 }}>{subPending}</span>}
         </button>
+        <button className={`tab ${tab === "screq" ? "active" : ""}`} onClick={() => setTab("screq")}>
+          학교 계정 신청 {reqPending > 0 && <span className="badge" style={{ background: "var(--alert)", color: "#fff", borderColor: "var(--alert)", marginLeft: 4 }}>{reqPending}</span>}
+        </button>
         <button className={`tab ${tab === "accounts" ? "active" : ""}`} onClick={() => setTab("accounts")}>계정 관리</button>
         <button className={`tab ${tab === "schools" ? "active" : ""}`} onClick={() => setTab("schools")}>학교 관리</button>
         <button className={`tab ${tab === "plans" ? "active" : ""}`} onClick={() => setTab("plans")}>플랜 관리</button>
         <button className={`tab ${tab === "articles" ? "active" : ""}`} onClick={() => setTab("articles")}>기사 관리</button>
+        <button className={`tab ${tab === "scaccounts" ? "active" : ""}`} onClick={() => setTab("scaccounts")}>학교 계정</button>
         <button className={`tab ${tab === "notices" ? "active" : ""}`} onClick={() => setTab("notices")}>공지 관리</button>
+        <button className={`tab ${tab === "vocnotices" ? "active" : ""}`} onClick={() => setTab("vocnotices")}>우리동네직업계고 공지</button>
         <button className={`tab ${tab === "apply" ? "active" : ""}`} onClick={() => setTab("apply")}>신청 관리</button>
         <button className={`tab ${tab === "special" ? "active" : ""}`} onClick={() => setTab("special")}>특강 관리</button>
       </div>
 
+      {tab === "screq" && <SchoolRequestsTab onCount={setReqPending} />}
       {tab === "apply" && <ApplicationsPanel />}
       {tab === "special" && <SpecialTab />}
       {tab === "stats" && <StatsTab stats={stats} />}
@@ -1442,9 +1855,11 @@ export default function AdminPanel() {
         <div style={{ display: "grid", gap: 16 }}>
           <NavVisibilityPanel />
           <FloatingButtonPanel />
-          <NoticeComposer />
+          <NoticeManager kind="board" />
         </div>
       )}
+      {tab === "vocnotices" && <NoticeManager kind="vocational" />}
+      {tab === "scaccounts" && <SchoolAccountsTab />}
     </div>
   );
 }
@@ -1695,8 +2110,11 @@ function SpecialTab() {
       desc: "온라인 직업계고설명회의 강사 프로필과 강의 구성(영상·챕터)을 관리합니다." },
     { to: "/admin/graduate-video", title: "합격생 영상 구성",
       desc: "결제가 확인된 계정에게만 보이는 영상입니다. 챕터마다 재생할 영상을 붙입니다." },
+    { to: "/admin/interviews", title: "학교 홍보 인터뷰",
+      desc: "학교에 찾아가 찍은 인터뷰를 학교별로 올립니다. 회원만 볼 수 있습니다." },
   ];
   return (
+    <>
     <div style={{ display: "grid", gap: 12,
       gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
       {cards.map((c) => (
@@ -1708,6 +2126,52 @@ function SpecialTab() {
           </p>
         </Link>
       ))}
+    </div>
+    <VisitStatsPanel />
+    </>
+  );
+}
+
+/** 사이트 방문자 수. 화면 아래에 "오늘 · 누적"으로 나가는 숫자다.
+ *  이 기능을 넣기 전의 방문을 더해 두고 싶으면 누적 시작값을 넣는다. */
+function VisitStatsPanel() {
+  const [d, setD] = useState(null);
+  const [base, setBase] = useState("");
+  const [msg, setMsg] = useState("");
+  useEffect(() => {
+    api.adminVisitStats().then((r) => { setD(r); setBase(String(r.base)); }).catch(() => {});
+  }, []);
+  if (!d) return null;
+  const save = async () => {
+    try {
+      const r = await api.saveVisitBase(Math.max(parseInt(base, 10) || 0, 0));
+      setD(r);
+      setMsg("저장했습니다.");
+    } catch (e) {
+      setMsg(e.message);
+    }
+  };
+  return (
+    <div className="panel" style={{ marginTop: 16 }}>
+      <h3 style={{ border: "none", padding: 0, margin: "0 0 6px" }}>방문자 수</h3>
+      <p style={{ fontSize: 13.5, color: "var(--steel)", margin: "0 0 10px", lineHeight: 1.65 }}>
+        사이트 아래에 보이는 숫자입니다. 오늘 <b>{d.today.toLocaleString()}</b>명 ·
+        누적 <b>{d.total.toLocaleString()}</b>명 (브라우저당 하루 1회, 봇 제외)
+      </p>
+      {d.days.length > 0 && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", fontSize: 12, color: "var(--steel)", marginBottom: 10 }}>
+          {d.days.slice(0, 14).map((x) => (
+            <span key={x.day} className="badge">{x.day.slice(5).replace("-", "/")} {x.count}</span>
+          ))}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <label className="label" htmlFor="visit-base">누적 시작값</label>
+        <input id="visit-base" className="input" type="number" min={0} value={base}
+          onChange={(e) => setBase(e.target.value)} style={{ width: 140 }} />
+        <button className="btn btn-sm" onClick={save}>저장</button>
+        {msg && <span style={{ fontSize: 12.5, color: "var(--steel)" }}>{msg}</span>}
+      </div>
     </div>
   );
 }

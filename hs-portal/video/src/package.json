@@ -1,0 +1,23 @@
+{
+  "name": "udj-promo-video",
+  "private": true,
+  "version": "1.0.0",
+  "description": "UDJ(우리동네 직업계고) 서비스 소개 영상 — 실제 화면 캡처 + Remotion 렌더링",
+  "type": "module",
+  "scripts": {
+    "capture": "node capture/capture.mjs",
+    "studio": "remotion studio remotion/index.ts",
+    "render": "node render.mjs"
+  },
+  "dependencies": {
+    "@remotion/bundler": "^4.0.532",
+    "@remotion/cli": "^4.0.532",
+    "@remotion/renderer": "^4.0.532",
+    "@types/react": "^18.3.31",
+    "playwright-core": "^1.63.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "^4.0.532",
+    "typescript": "^5.9.3"
+  }
+}

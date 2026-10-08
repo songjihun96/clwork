@@ -197,7 +197,7 @@ def _shorten(text: str, limit: int) -> str:
 
 
 def generate_essay(question: str, experiences: List[dict], user,
-                   limit: int = DEFAULT_LIMIT) -> dict:
+                   limit: int = DEFAULT_LIMIT, job: str = "") -> dict:
     """경험을 근거로 자소서 초안을 만들고, 사실인지 확인한다.
 
     AI 호출은 초안 1회 + 확인 1회, 문제가 있으면 다시 쓰기 1회까지.
@@ -212,7 +212,8 @@ def generate_essay(question: str, experiences: List[dict], user,
     body = mask.mask(json.dumps(experiences, ensure_ascii=False, indent=2))
 
     prompt = ai_prompts.fill(ai_prompts.ESSAY_GENERATION_PROMPT,
-                             question=question, experience=body, limit=limit)
+                             question=question, experience=body, limit=limit,
+                             job=(job or "").strip() or "(고르지 않음)")
     res = llm.generate_json(prompt, temperature=0.3, op="essay",
                             max_tokens=min(4000, limit * 3))
     if not res.ok:
@@ -260,6 +261,89 @@ def generate_essay(question: str, experiences: List[dict], user,
         "issues": check.get("issues", []),
         "model": llm.MODEL,
     }
+
+
+# ── 지원동기 · 입사 후 목표 질문 ────────────────────────────
+
+MOTIVE_TOPICS = {"apply_motive": "회사에 지원한 이유(지원동기)",
+                 "future_goal": "입사 후 이루고 싶은 목표 (단기 1~3년 / 장기 5년 이후)"}
+MOTIVE_GROUPS = {"apply_motive": ["지원동기"],
+                 "future_goal": ["단기(1~3년)", "장기(5년 이후)"]}
+MAX_QUESTIONS = 6
+
+
+def generate_motive_questions(topic: str, records: List[dict], user, job: str = "") -> dict:
+    """학생의 1~2학년 기록에서 출발하는 지원동기·입사 후 목표 질문을 만든다.
+
+    records: [{record_id, entry_date, kind_label, title, content}]
+    질문의 근거(basis)는 넘겨준 기록 번호만 남긴다 — AI 가 없는 기록을 가리키면 버린다.
+    """
+    if topic not in MOTIVE_TOPICS:
+        return {"ok": False, "error": "지원동기나 입사 후 목표에서만 쓸 수 있습니다.",
+                "error_type": "bad_topic"}
+
+    mask = privacy.build(user)
+    lines = []
+    for r in records:
+        body = (r.get("content") or "").strip()
+        if not body:
+            continue
+        lines.append(f"[기록 {r['record_id']}] {r.get('entry_date', '')} · "
+                     f"{r.get('kind_label', '')} · {r.get('title', '')}\n{body}")
+    body = mask.mask("\n\n".join(lines)) if lines else "(기록 없음)"
+
+    prompt = ai_prompts.fill(
+        ai_prompts.MOTIVE_QUESTIONS_PROMPT,
+        topic=MOTIVE_TOPICS[topic],
+        instructions=ai_prompts.MOTIVE_INSTRUCTIONS[topic],
+        job=(job or "").strip() or "(고르지 않음)",
+        records=body)
+    res = llm.generate_json(prompt, temperature=0.3, op="motive_questions", max_tokens=2000)
+    if not res.ok:
+        return {"ok": False, "error": res.error, "error_type": res.error_type}
+
+    known = {int(r["record_id"]): r for r in records}
+    groups = MOTIVE_GROUPS[topic]
+    out = []
+    for q in ((res.data or {}).get("questions") or []):
+        if not isinstance(q, dict):
+            continue
+        text = mask.unmask(str(q.get("question") or "")).strip()
+        if not text:
+            continue
+        group = str(q.get("group") or "").strip()
+        if group not in groups:
+            group = groups[0] if len(groups) == 1 else (
+                groups[1] if ("장기" in group or "5년" in group) else groups[0])
+        basis = []
+        for b in (q.get("basis") or []):
+            if not isinstance(b, dict):
+                continue
+            try:
+                rid = int(b.get("record_id"))
+            except (TypeError, ValueError):
+                continue
+            if rid not in known:
+                continue          # 없는 기록을 근거로 댄 것은 버린다
+            r = known[rid]
+            basis.append({"record_id": rid,
+                          "evidence": mask.unmask(str(b.get("evidence") or "")).strip(),
+                          "entry_date": r.get("entry_date", ""),
+                          "title": r.get("title", ""),
+                          "kind_label": r.get("kind_label", "")})
+        out.append({"id": len(out) + 1, "group": group, "question": text, "basis": basis})
+        if len(out) >= MAX_QUESTIONS:
+            break
+
+    if not out:
+        return {"ok": False, "error": "질문을 만들지 못했습니다. 다시 시도해주세요.",
+                "error_type": "empty"}
+    # 단기 → 장기 순으로 보여 준다.
+    out.sort(key=lambda q: groups.index(q["group"]))
+    for i, q in enumerate(out, 1):
+        q["id"] = i
+    return {"ok": True, "topic": topic, "questions": out,
+            "record_count": len(lines), "model": llm.MODEL}
 
 
 # ── 사실 확인 ──────────────────────────────────────────────

@@ -53,7 +53,7 @@ export default function MyClassBar() {
 
       <span className="hint">
         {info.school_name && `${info.school_name} · `}
-        수업 일지의 교과 목록이 {info.scope} 기준으로 {info.subjects.length}개 나옵니다.
+        수업일지의 교과 목록이 {info.scope} 기준으로 {info.subjects.length}개 나옵니다.
         {info.scope === "전체" && " 학과와 학년을 고르면 내 과목만 보입니다."}
       </span>
     </div>

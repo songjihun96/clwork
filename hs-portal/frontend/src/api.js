@@ -98,13 +98,6 @@ function uploadWithProgress(path, file, onProgress) {
 export const api = {
   meta: () => request("/api/meta"),
 
-  // 학급 이관
-  classOptions: () => request("/api/teacher/class-options"),
-  moveStudents: (user_ids, class_name) =>
-    request("/api/teacher/students/move", {
-      method: "POST", body: { user_ids, class_name },
-    }),
-
   quizQuestions: () => request("/api/quiz/questions"),
   quizResult: (answers, lat, lng, location_label, commute_time, seed) =>
     request("/api/quiz/result", {
@@ -180,12 +173,6 @@ export const api = {
   addEvent: (body) => request("/api/school-admin/events", { method: "POST", body }),
   updateEvent: (id, body) => request(`/api/school-admin/events/${id}`, { method: "PUT", body }),
   deleteEvent: (id) => request(`/api/school-admin/events/${id}`, { method: "DELETE" }),
-  // 재학생 인증 (선생님이 처리)
-  teacherVerifications: () => request("/api/teacher/verifications"),
-  approveVerification: (id, class_name = "") =>
-    request(`/api/teacher/verifications/${id}/approve`, { method: "POST", body: { class_name } }),
-  rejectVerification: (id) =>
-    request(`/api/teacher/verifications/${id}/reject`, { method: "POST" }),
   myOrders: () => request("/api/school-admin/orders"),
   requestPlan: (plan, months, note = "", tax = {}) =>
     request("/api/school-admin/orders", {
@@ -229,15 +216,6 @@ export const api = {
 
   articles: (limit = 8) => request("/api/articles", { params: { limit } }),
   allEvents: (params) => request("/api/events", { params }),
-
-  // 선생님 워크스페이스
-  teacherMe: () => request("/api/teacher/me"),
-  teacherChangePassword: (body) => request("/api/teacher/change-password", { method: "POST", body }),
-  teacherSearchStudents: (q) => request("/api/teacher/students/search", { params: { q } }),
-  teacherStudents: (scope = "mine") => request("/api/teacher/students", { params: { scope } }),
-  teacherRegisterStudent: (user_id, class_name = "") =>
-    request("/api/teacher/students", { method: "POST", body: { user_id, class_name } }),
-  teacherUnregisterStudent: (id) => request(`/api/teacher/students/${id}`, { method: "DELETE" }),
 
   schoolArticles: (schoolId, limit = 6) =>
     request(`/api/schools/${schoolId}/articles`, { params: { limit } }),
@@ -307,12 +285,28 @@ export const api = {
   pausePlan: (id, paused) =>
     request(`/api/admin/schools/${id}/plan-pause`, { method: "PATCH", params: { paused } }),
   // 공지 · 알림
-  notices: () => request("/api/notices"),
+  notices: (params) => request("/api/notices", { params }),
+  notice: (id) => request(`/api/notices/${id}`),
   floatingButton: () => request("/api/floating-button"),
   adminFloatingButton: () => request("/api/admin/floating-button"),
   saveFloatingButton: (body) => request("/api/admin/floating-button", { method: "PUT", body }),
   readNotice: (id) => request(`/api/notices/${id}/read`, { method: "POST" }),
-  adminNotices: () => request("/api/admin/notices"),
+  adminNotices: (kind) => request("/api/admin/notices", { params: { kind } }),
+  updateAdminNotice: (id, body) => request(`/api/admin/notices/${id}`, { method: "PUT", body }),
+  publishAdminNotice: (id) => request(`/api/admin/notices/${id}/publish`, { method: "POST" }),
+  unpublishAdminNotice: (id) => request(`/api/admin/notices/${id}/unpublish`, { method: "POST" }),
+  previewAdminNotice: (body) => request("/api/admin/notices/preview", { method: "POST", body }),
+  previewAdminNoticeSaved: (id) => request(`/api/admin/notices/${id}/preview`),
+  adminNoticeLogs: (id) => request(`/api/admin/notices/${id}/logs`),
+  retryFailedNotice: (id) => request(`/api/admin/notices/${id}/retry-failed`, { method: "POST" }),
+  retryNotificationLog: (id) => request(`/api/admin/notification-logs/${id}/retry`, { method: "POST" }),
+  schoolNoticeSettings: () => request("/api/school/notification-settings"),
+  saveSchoolNoticeSettings: (body) => request("/api/school/notification-settings", { method: "PUT", body }),
+  adminSchoolContact: (id) => request(`/api/admin/schools/${id}/contact`),
+  saveAdminSchoolContact: (id, body) => request(`/api/admin/schools/${id}/contact`, { method: "PUT", body }),
+  setSchoolLevel: (id, school_level) =>
+    request(`/api/admin/schools/${id}/school-level`, { method: "PUT", body: { school_level } }),
+  adminSchoolAccounts: (params) => request("/api/admin/school-accounts", { params }),
   uploadNoticeImage: async (file) => {
     const fd = new FormData();
     fd.append("file", file);
@@ -409,6 +403,16 @@ export const api = {
     request(`/api/admin/videos/${id}`,
       { method: "DELETE", params: withShorts ? { with_shorts: true } : {} }),
   deleteVideoFile: (id) => request(`/api/admin/videos/${id}/file`, { method: "DELETE" }),
+  // 설명회 특강 카드와 영상 챕터
+  lectures: () => request("/api/lectures"),
+  videoChapters: (id) => request(`/api/admin/videos/${id}/chapters`),
+  saveVideoChapters: (id, chapters) =>
+    request(`/api/admin/videos/${id}/chapters`, { method: "PUT", body: { chapters } }),
+  uploadVideoThumbnail: (file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request("/api/admin/videos/thumbnail", { method: "POST", formData: fd });
+  },
   // 영상은 수백 MB~기가라 "올리는 중…" 만 띄우면 멈춘 것과 구별이 안 된다.
   // fetch 는 업로드 진행률을 알려주지 않아서 이 요청만 XHR 을 쓴다.
   uploadVideoFile: (id, file, onProgress) => uploadWithProgress(
@@ -419,6 +423,94 @@ export const api = {
   matchProgress: (id) => request(`/api/admin/videos/${id}/match-progress`),
   editMatch: (id, body) => request(`/api/admin/matches/${id}`, { method: "PUT", body }),
   confirmMatch: (id) => request(`/api/admin/matches/${id}/confirm`, { method: "POST" }),
+
+  // ---------- 학교 홍보 인터뷰 (재생은 회원만) ----------
+  interviews: (school_id, region) => request("/api/interviews", { params: { school_id, region } }),
+  interview: (id) => request(`/api/interviews/${id}`),
+  adminInterviews: () => request("/api/admin/interviews"),
+  createInterview: (body) => request("/api/admin/interviews", { method: "POST", body }),
+  updateInterview: (id, body) => request(`/api/admin/interviews/${id}`, { method: "PUT", body }),
+  deleteInterview: (id) => request(`/api/admin/interviews/${id}`, { method: "DELETE" }),
+  uploadInterviewThumbnail: (file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request("/api/admin/interviews/thumbnail", { method: "POST", formData: fd });
+  },
+
+  // ---------- 방문자 수 ----------
+  visit: (visitor_id) => request("/api/visit", { method: "POST", body: { visitor_id } }),
+  visitStats: () => request("/api/visit-stats"),
+  adminVisitStats: () => request("/api/admin/visit-stats"),
+  saveVisitBase: (base) => request("/api/admin/visit-stats", { method: "PUT", body: { base } }),
+
+  // ---------- 학교 계정 발급 신청 ----------
+  schoolRequestPrivacy: () => request("/api/privacy/school-account-request"),
+  createSchoolRequest: (body) =>
+    request("/api/school-account-requests", { method: "POST", body }),
+  adminSchoolRequests: (status, level) =>
+    request("/api/admin/school-account-requests", { params: { status, level } }),
+  updateSchoolRequest: (id, body) =>
+    request(`/api/admin/school-account-requests/${id}`, { method: "PATCH", body }),
+  approveSchoolRequest: (id) =>
+    request(`/api/admin/school-account-requests/${id}/approve`, { method: "POST" }),
+  linkSchoolRequest: (id, school_id) =>
+    request(`/api/admin/school-account-requests/${id}/link-school`,
+      { method: "POST", params: { school_id } }),
+  deleteSchoolRequest: (id) =>
+    request(`/api/admin/school-account-requests/${id}`, { method: "DELETE" }),
+
+  // ---------- 진학정보 (플래티넘) ----------
+  schoolAdmission: (schoolId, params) =>
+    request(`/api/schools/${schoolId}/admission`, { params }),
+  admissionCompare: (ids) =>
+    request("/api/admission/compare", { params: { ids: ids.join(",") } }),
+  admissionInterest: (category, ids) =>
+    request("/api/admission/interest", { params: { category, ids: ids.join(",") } }),
+  admissionAccess: () => request("/api/school-admin/admission/access"),
+  admissionDashboard: () => request("/api/school-admin/admission"),
+  saveAdmissionSettings: (body) =>
+    request("/api/school-admin/admission/settings", { method: "PUT", body }),
+  saveAdmissionStat: (year, body) =>
+    request(`/api/school-admin/admission/stats/${year}`, { method: "PUT", body }),
+  deleteAdmissionStat: (year) =>
+    request(`/api/school-admin/admission/stats/${year}`, { method: "DELETE" }),
+  admissionRecords: (year) => request("/api/school-admin/admission/records", { params: { year } }),
+  addAdmissionRecords: (rows) =>
+    request("/api/school-admin/admission/records", { method: "POST", body: { rows } }),
+  updateAdmissionRecord: (id, body) =>
+    request(`/api/school-admin/admission/records/${id}`, { method: "PUT", body }),
+  deleteAdmissionRecord: (id) =>
+    request(`/api/school-admin/admission/records/${id}`, { method: "DELETE" }),
+  saveAdmissionEmployers: (items) =>
+    request("/api/school-admin/admission/employers", { method: "PUT", body: { items } }),
+  saveAdmissionEmployment: (year, items) =>
+    request(`/api/school-admin/admission/employment/${year}`, { method: "PUT", body: { items } }),
+  // 검사만(commit=false) → 확인 후 같은 파일로 확정(commit=true)
+  importAdmission: (file, { commit = false, skipErrors = false, replace = false } = {}) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request("/api/school-admin/admission/import", {
+      method: "POST", formData: fd,
+      params: { commit, skip_errors: skipErrors, replace },
+    });
+  },
+  // 템플릿·내보내기는 Authorization 헤더가 필요해 blob 으로 받아 떨군다.
+  downloadAdmissionFile: async (kind, format = "xlsx") => {
+    const res = await fetch(
+      new URL(`/api/school-admin/admission/${kind}?format=${format}`, API_BASE),
+      { headers: { Authorization: `Bearer ${getToken()}` } });
+    if (!res.ok) throw new Error("내려받기에 실패했습니다.");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const stamp = new Date().toISOString().slice(0, 10);
+    a.download = kind === "template" ? `진학정보_템플릿.${format}` : `진학정보_${stamp}.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
 
   uploadHeroImage: async (file) => {
     const fd = new FormData();

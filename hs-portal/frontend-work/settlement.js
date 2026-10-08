@@ -126,6 +126,21 @@ async function pageSettlement() {
     </div></div>`;
   }
 
+  // ── 결제 유형별 ─────────────────────────────────────────────────────────
+  if (d.by_type) {
+    html += `<div class="card">
+      <div class="card-head"><h2>결제 유형별</h2>
+        <button class="mini" onclick="salesState.start='${month}-01';salesState.end='';salesState.type='';go('sales')">기간·유형으로 자세히</button></div>
+      <div class="tablewrap"><table>
+        <tr><th>결제 유형</th><th style="text-align:right">건수</th><th style="text-align:right">매출</th><th style="text-align:right">환불</th><th style="text-align:right">순매출</th><th style="text-align:right">비율</th></tr>
+        ${d.by_type.map((t) => `<tr><td><span class="swatch" style="background:${PTYPE_COLOR[t.key]}"></span>${esc(t.label)}</td>
+          <td class="num">${fmtN(t.count)}건</td><td class="num">${won(t.sales)}</td>
+          <td class="num">${t.refunds ? '− ' + won(t.refunds) : '-'}</td><td class="num"><b>${won(t.net)}</b></td>
+          <td class="num">${t.ratio}%</td></tr>`).join('')}
+      </table></div>
+    </div>`;
+  }
+
   // ── 사이트별 ────────────────────────────────────────────────────────────
   html += `<div class="grid g2">
     <div class="card">
@@ -281,6 +296,7 @@ function setupLedgerDialog() {
         method: 'POST',
         body: JSON.stringify({
           month: d.month, kind: d.kind, site: d.site, amount: Number(d.amount),
+          payment_type: d.payment_type || 'other',
           memo: d.memo || '', day: d.day || null,
         }),
       });

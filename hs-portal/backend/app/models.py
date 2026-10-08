@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     Float,
+    Index,
     LargeBinary,
     ForeignKey,
     Integer,
@@ -39,7 +40,9 @@ class Plan(str, enum.Enum):
 PLAN_RANK = {Plan.platinum: 3, Plan.premium: 2, Plan.basic: 1, Plan.free: 0}
 
 # 월 단위 가격(원)
-PLAN_PRICE = {Plan.free: 0, Plan.basic: 99000, Plan.premium: 249000, Plan.platinum: 499000}
+# 관리자 화면에서 가격을 저장하지 않았을 때 쓰는 월 가격. 운영 설정(2026-10)과 같게 둔다.
+# 연 가격은 따로 정하지 않으면 월 × 12 다(main.get_plan_price_year).
+PLAN_PRICE = {Plan.free: 0, Plan.basic: 149000, Plan.premium: 249000, Plan.platinum: 299000}
 
 
 class OrderStatus(str, enum.Enum):
@@ -155,11 +158,24 @@ class School(Base):
     # 학교 소개 영상(유튜브) 주소. 줄바꿈으로 구분해 최대 4개까지 담는다.
     # departments 와 같은 방식이라 새 테이블 없이 한 칸으로 끝난다.
     youtube_urls = Column(Text, default="")
+    # 주요 취업처(기업 이름). 줄바꿈으로 구분. 취업/진학 정보 화면에 보인다.
+    # 학교 계정이 '취업/진학 정보' 탭에서만 고친다(관리자 화면에는 입력칸이 없다).
+    major_employers = Column(Text, default="")
 
     # 문의가 들어왔을 때 알림을 받을 주소. 로그인 계정 메일과 일부러 따로 둔다
     # — 로그인은 학교 대표 계정으로 하고 알림은 담당 선생님이 받는 경우가
     # 대부분이다. 비어 있으면 알림을 보내지 않는다(기본 꺼짐).
     inquiry_notify_email = Column(String(120), default="")
+
+    # 학교급. high = 고등학교(직업계고 포털의 본래 대상), middle = 중학교.
+    # 학교 목록은 NEIS 의 고등학교만 담아 왔으므로 기존 학교는 모두 high 다.
+    # 중학교는 학교 계정 신청을 승인할 때 숨김(is_visible=False) 학교로 만들어진다
+    # — 공개 검색·지도·사이트맵은 숨김 학교를 빼므로 중학교가 섞이지 않는다.
+    school_level = Column(String(10), nullable=False, default="high", index=True)
+    # UDJ 공지 알림을 받을 주소. 비우면 학교 계정의 로그인 메일로 보낸다.
+    notice_email = Column(String(120), default="")
+    notice_email_enabled = Column(Boolean, nullable=False, default=True)
+
     employment_rate = Column(Float, nullable=True)  # 취업률(%)
     student_count = Column(Integer, nullable=True)
     established_year = Column(Integer, nullable=True)
@@ -248,6 +264,163 @@ class AdmissionEvent(Base):
     description = Column(Text, default="")
 
     school = relationship("School", back_populates="events")
+
+
+class SchoolAccountRequest(Base):
+    """학교가 직접 남기는 학교 계정 발급 신청.
+
+    학교 계정은 예전처럼 관리자만 만든다. 이 표는 그 앞단이다 — 학교가
+    정보를 남기면 운영자가 **전화로 확인한 뒤** 승인하고, 승인하는 순간
+    계정이 만들어져 신청서에 적힌 주소로 아이디·임시 비밀번호가 나간다.
+
+    담당자 휴대폰·이메일이 들어오므로 개인정보 동의를 함께 받고, 처리가
+    끝난 신청서는 보관 기간이 지나면 파기한다(main.py 의 purge 참고).
+    """
+
+    __tablename__ = "school_account_requests"
+
+    id = Column(Integer, primary_key=True)
+
+    # 목록에서 고른 학교. 목록에 없어서 직접 적었으면 비어 있고 school_name 만 있다.
+    school_id = Column(Integer, ForeignKey("schools.id"), nullable=True, index=True)
+    school_name = Column(String(120), nullable=False)   # 적어 낸 이름(고른 경우도 복사해 둔다)
+    # 학교급: high(고등학교) / middle(중학교). 예전 신청은 모두 고등학교였다.
+    school_level = Column(String(10), nullable=False, default="high", index=True)
+    # 지역(시·도). 목록에 없는 학교(중학교 등)를 승인할 때 학교를 만들며 쓴다.
+    region = Column(String(20), default="")
+
+    # --- 담당자 (개인정보) ---
+    manager_name = Column(String(40), nullable=False)
+    manager_position = Column(String(40), default="")   # 직위(부장/담당교사 등)
+    manager_phone = Column(String(30), nullable=False)  # 확인 전화를 걸 번호
+    manager_email = Column(String(120), nullable=False)  # 승인되면 이 주소가 아이디가 된다
+    school_phone = Column(String(30), default="")       # 학교 대표번호
+    call_time = Column(String(60), default="")          # 통화 가능한 시간대
+
+    privacy_consent = Column(Boolean, nullable=False, default=False)
+    # (선택) 담당자가 '우리동네직업계고 공지'를 이메일·문자로 받는 데 동의했는지.
+    # 승인하면 담당 선생님 연락처에 동의 시각으로 옮겨 적는다.
+    notice_consent = Column(Boolean, nullable=False, default=False)
+
+    # received(접수) / called(통화 완료) / approved(승인) / rejected(반려)
+    status = Column(String(10), nullable=False, default="received", index=True)
+    admin_note = Column(String(300), default="")        # 통화 내용·반려 사유
+
+    # 승인 결과
+    created_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    mail_sent = Column(Boolean, nullable=False, default=False)
+    mail_error = Column(String(300), default="")
+
+    ip = Column(String(45), default="")
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    handled_at = Column(DateTime, nullable=True)
+    handled_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    school = relationship("School")
+
+
+# ══════════════════════════════════════════════════════════════
+#  진학정보 (플래티넘 혜택 "admission_stats")
+#
+#  이름이 비슷하지만 위의 AdmissionEvent(참가 행사)·School.admission_info
+#  (학교 상세 안내)와는 관계가 없다. 졸업생이 어디로 진학·취업했는지를
+#  **학교가 직접 입력한** 집계 숫자다. 학생 개인을 알아볼 수 있는 값(이름·
+#  학번·연락처)은 칸 자체를 두지 않는다 — "○○대학교 3명" 까지만 담는다.
+#
+#  상태값은 콜센터 표와 같은 이유로 Enum 대신 문자열로 두고, 허용 값은
+#  admission.py 의 상수로 못 박아 API 에서 검증한다.
+# ══════════════════════════════════════════════════════════════
+
+
+class AdmissionStat(Base):
+    """학교·졸업 연도별 진로 기본 통계.
+
+    비율은 저장하지 않는다. 비율을 따로 두면 인원을 고쳤을 때 둘이 어긋난다.
+    대학 진학자 합계도 세 칸(4년제·전문대·기타 교육기관)의 합으로 계산한다.
+    """
+
+    __tablename__ = "admission_stats"
+    __table_args__ = (
+        UniqueConstraint("school_id", "year", name="uq_admission_stat_year"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    school_id = Column(Integer, ForeignKey("schools.id"), nullable=False, index=True)
+    year = Column(Integer, nullable=False)                    # 졸업 연도
+    total_graduates = Column(Integer, nullable=False, default=0)
+    four_year_count = Column(Integer, nullable=False, default=0)
+    junior_college_count = Column(Integer, nullable=False, default=0)
+    other_higher_count = Column(Integer, nullable=False, default=0)   # 기타 교육기관
+    employment_count = Column(Integer, nullable=False, default=0)
+    other_count = Column(Integer, nullable=False, default=0)          # 군입대·미진학 등
+    # 직업계고: 진학자 가운데 고교 전공과 같은 계열로 간 인원 / 다른 계열
+    same_field_count = Column(Integer, nullable=True)
+    diff_field_count = Column(Integer, nullable=True)
+    is_published = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AdmissionRecord(Base):
+    """대학·학과별 진학 인원 한 줄 (예: ○○대학교 컴퓨터공학과 5명)."""
+
+    __tablename__ = "admission_records"
+
+    id = Column(Integer, primary_key=True)
+    school_id = Column(Integer, ForeignKey("schools.id"), nullable=False, index=True)
+    year = Column(Integer, nullable=False)
+    university_name = Column(String(80), nullable=False)
+    university_type = Column(String(16), nullable=False)       # 4_YEAR / JUNIOR_COLLEGE / OTHER
+    region = Column(String(16), nullable=False)                # SEOUL / CAPITAL_AREA ...
+    department_name = Column(String(80), nullable=False)
+    department_category = Column(String(20), nullable=False)   # IT_SOFTWARE ...
+    admission_type = Column(String(12), default="")            # 수시/정시/특별 (선택)
+    student_count = Column(Integer, nullable=False, default=1)
+    is_published = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# 학교 페이지는 늘 "이 학교의 이 연도(들)"만 읽는다. 학교를 앞에 둔 복합
+# 인덱스로 다른 학교 행은 건드리지 않게 한다.
+Index("ix_admission_records_school_year", AdmissionRecord.school_id, AdmissionRecord.year)
+Index("ix_admission_records_school_univ",
+      AdmissionRecord.school_id, AdmissionRecord.university_name)
+Index("ix_admission_records_school_region", AdmissionRecord.school_id, AdmissionRecord.region)
+Index("ix_admission_records_school_cat",
+      AdmissionRecord.school_id, AdmissionRecord.department_category)
+
+
+class AdmissionEmployment(Base):
+    """직업계고 취업 분야별 인원 (연도 × 분야 한 칸)."""
+
+    __tablename__ = "admission_employment"
+    __table_args__ = (
+        UniqueConstraint("school_id", "year", "field", name="uq_admission_employment"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    school_id = Column(Integer, ForeignKey("schools.id"), nullable=False, index=True)
+    year = Column(Integer, nullable=False)
+    field = Column(String(20), nullable=False)
+    count = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AdmissionSetting(Base):
+    """학교별 진학정보 공개 설정. 행이 없으면 기본값(비공개)으로 본다 —
+    학교가 숫자를 채우고 직접 공개를 눌러야 밖에 나간다."""
+
+    __tablename__ = "admission_settings"
+
+    school_id = Column(Integer, ForeignKey("schools.id"), primary_key=True)
+    visibility = Column(String(10), nullable=False, default="PRIVATE")  # PUBLIC/MEMBERS/STUDENTS/PRIVATE
+    # 비워 두면 School.category 로 판단(특성화고·마이스터고·종합고 → 직업계고)
+    school_type = Column(String(20), default="")
+    # 이 인원 미만인 대학·학과는 숫자 대신 "소수 인원"으로 보인다. 0 이면 끔.
+    small_count_threshold = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class JournalEntry(Base):
@@ -487,8 +660,81 @@ class Notice(Base):
     ends_at = Column(DateTime, nullable=True)     # 비우면 무기한
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
+    # --- 2026-10 공지사항 개편 ---
+    # board      : 공지사항 게시판(사이트 공지). 학교 계정에 메일 알림을 보낼 수 있다.
+    # vocational : '우리동네직업계고 공지'. 직업계고 담당 선생님에게 메일·문자로 보낸다.
+    kind = Column(String(12), nullable=False, default="board", index=True)
+    # notice / update / maintenance / event / important
+    category = Column(String(12), nullable=False, default="notice")
+    # draft(임시저장) / published(게시). 예전 공지는 모두 게시된 상태였다.
+    status = Column(String(10), nullable=False, default="published", index=True)
+    published_at = Column(DateTime, nullable=True)
+    # 메일 알림 대상 학교급: all / high / middle
+    target_level = Column(String(10), nullable=False, default="all")
+    email_enabled = Column(Boolean, nullable=False, default=False)
+    sms_enabled = Column(Boolean, nullable=False, default=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
     author = relationship("User")
     school = relationship("School")
+
+
+class SchoolContact(Base):
+    """학교별 '우리동네직업계고 담당 선생님'.
+
+    UDJ 에는 선생님 계정이 없다(선생님 기능은 기록해로 옮겼다). 그래서 계정이
+    아니라 연락처로 둔다. 학교 계정 신청을 승인하면 신청서의 담당자가 이 표에
+    들어가고, 학교 계정·관리자가 고칠 수 있다. 정책상 학교마다 주 담당자
+    1명(is_primary)을 두지만, 여러 명을 담을 수 있게 표로 만들었다.
+    """
+
+    __tablename__ = "school_contacts"
+
+    id = Column(Integer, primary_key=True)
+    school_id = Column(Integer, ForeignKey("schools.id"), nullable=False, index=True)
+    role = Column(String(20), nullable=False, default="udj_contact")
+    name = Column(String(40), nullable=False, default="")
+    position = Column(String(40), default="")
+    email = Column(String(120), default="")
+    phone = Column(String(30), default="")
+    is_primary = Column(Boolean, nullable=False, default=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    # 공지 수신(이메일·문자) 개인정보 수집·이용 동의 시각. **비어 있으면 보내지 않는다.**
+    # 2026-10 이전에 신청서로 들어온 담당자는 이 동의를 받은 적이 없어 비어 있다.
+    consent_at = Column(DateTime, nullable=True)
+    # 동의를 어디서 받았는지: school(학교 계정 화면) / request(계정 신청서) / admin(운영자 확인)
+    consent_source = Column(String(10), default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class NotificationLog(Base):
+    """공지 알림 발송 기록. **같은 공지·같은 받는 곳·같은 수단은 한 줄만** 둔다
+    (uq_notification_target). 다시 게시하거나 새로고침해도 줄이 새로 생기지 않으니
+    중복 발송이 없다. 실패한 줄만 다시 pending 으로 돌려 재발송한다.
+
+    status: pending / sending / sent / failed / cancelled(보낼 수 없는 대상 — 주소 없음 등)
+    """
+
+    __tablename__ = "notification_logs"
+    __table_args__ = (
+        UniqueConstraint("notice_id", "channel", "target_key", name="uq_notification_target"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    notice_id = Column(Integer, ForeignKey("notices.id"), nullable=False, index=True)
+    channel = Column(String(8), nullable=False)               # email / sms
+    recipient_type = Column(String(20), nullable=False)       # school_account / udj_contact
+    target_key = Column(String(40), nullable=False)           # school:12 / contact:5
+    school_id = Column(Integer, nullable=True, index=True)
+    contact_id = Column(Integer, nullable=True)
+    address = Column(String(120), default="")                 # 메일 주소·전화번호(재발송용)
+    status = Column(String(10), nullable=False, default="pending", index=True)
+    error = Column(String(300), default="")
+    attempts = Column(Integer, nullable=False, default=0)
+    sent_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class NoticeRead(Base):
@@ -582,6 +828,8 @@ class SubscriptionOrder(Base):
     payment_key = Column(String(200), default="")   # 승인 후 토스가 주는 키(취소에 필요)
     pay_method = Column(String(30), default="")     # 카드/간편결제 등
     receipt_url = Column(String(300), default="")   # 영수증 링크
+    # 토스 테스트 키(test_sk_)로 승인된 결제. 돈이 오가지 않았으므로 매출에서 뺀다(우리업무 정산).
+    is_test = Column(Boolean, default=False)
     refunded_at = Column(DateTime, nullable=True)
 
     # 미성년자 결제 보호(민법 제5조): 결제 시점의 법정대리인 동의 여부
@@ -1040,6 +1288,9 @@ class Video(Base):
     category = Column(String(40), default="", index=True)
     is_public = Column(Boolean, nullable=False, default=False)
     view_count = Column(Integer, nullable=False, default=0)
+    # 온라인 직업계고 설명회 화면에 특강 카드로 올릴 롱폼. 올리면 회원만 본다
+    # (membervideo.py). 숏츠 전체 공개 스위치와는 따로 간다.
+    is_lecture = Column(Boolean, nullable=False, default=False)
 
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -1218,3 +1469,83 @@ class MonitorSample(Base):
     all_up = Column(Boolean, default=True)
 
     payload = Column(Text, default="{}")
+
+
+class VideoChapter(Base):
+    """롱폼 한 편 안의 구간(챕터). 파일을 자르지 않고 시각으로만 나눈다.
+
+    40분짜리를 "1부 00:00~20:00 / 2부 20:00~40:00"처럼 나눠 두면 영상 상세
+    화면 오른쪽에 목록이 뜨고, 누르면 그 초로 옮겨 이어서 재생한다.
+    end_sec 이 비어 있으면 다음 챕터의 시작(마지막이면 영상 끝)까지로 본다.
+    """
+
+    __tablename__ = "video_chapters"
+
+    id = Column(Integer, primary_key=True)
+    video_id = Column(Integer, ForeignKey("videos.id"), nullable=False, index=True)
+    title = Column(String(200), nullable=False)
+    start_sec = Column(Float, nullable=False, default=0)
+    end_sec = Column(Float, nullable=True)
+    display_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SchoolInterview(Base):
+    """학교에 찾아가 찍은 홍보 인터뷰 영상.
+
+    촬영은 학교가 비용을 내고 신청한다(신청은 문의 폼으로 받는다). 영상
+    파일 자체는 영상 관리(Video)에 올리고 여기서는 "어느 학교의 어떤
+    인터뷰인가"만 묶는다. 보는 것은 가입한 회원만 — membervideo.py 참고.
+    """
+
+    __tablename__ = "school_interviews"
+
+    id = Column(Integer, primary_key=True)
+    # 포털에 없는 학교(분교·신설교)도 찍을 수 있어 이름을 따로 둔다.
+    school_id = Column(Integer, ForeignKey("schools.id"), nullable=True, index=True)
+    school_name = Column(String(80), default="")
+    # 지역. 포털 학교를 고른 인터뷰는 학교의 지역을 쓰고, 이 칸은 목록에 없는
+    # 학교(직접 입력)일 때만 쓴다. 비어 있으면 지역 필터에서 '기타'로 묶인다.
+    region = Column(String(20), default="")
+    title = Column(String(200), nullable=False)
+    summary = Column(Text, default="")
+    # 누가 나오는지(예: "교장 선생님 · 3학년 재학생 2명"). 목록 카드에 한 줄로 쓴다.
+    speakers = Column(String(200), default="")
+    video_id = Column(Integer, ForeignKey("videos.id"), nullable=True)
+    thumbnail = Column(String(300), default="")
+    filmed_on = Column(Date, nullable=True)
+    is_published = Column(Boolean, nullable=False, default=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+    view_count = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SiteVisitDay(Base):
+    """하루 방문자 수. 사이트 아래에 "오늘 · 누적"으로 보여 준다.
+
+    감시 도구(monitor.py)는 nginx 로그에서 세지만, 로그는 2주 뒤 지워지고
+    로컬 실행에는 nginx 가 없다. 누적은 계속 쌓여야 해서 DB 에 날짜별로 접는다.
+    """
+
+    __tablename__ = "site_visit_days"
+
+    day = Column(Date, primary_key=True)
+    count = Column(Integer, nullable=False, default=0)
+
+
+class SiteVisitSeen(Base):
+    """오늘 이미 센 방문자. 같은 사람이 새로고침해도 한 번만 센다.
+
+    visitor_key 는 브라우저가 만든 임의 값을 해시한 것이라 누구인지 알 수 없다.
+    이틀 지난 줄은 지운다.
+    """
+
+    __tablename__ = "site_visit_seen"
+    __table_args__ = (UniqueConstraint("day", "visitor_key", name="uq_visit_seen"),)
+
+    id = Column(Integer, primary_key=True)
+    day = Column(Date, nullable=False, index=True)
+    visitor_key = Column(String(64), nullable=False)
+    ip_key = Column(String(64), nullable=False, default="", index=True)

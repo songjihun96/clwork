@@ -97,9 +97,10 @@ export const api = {
   udjSendCode: (body) => request("/api/phone/send-code", { method: "POST", body, base: UDJ }),
   udjVerifyCode: (body) => request("/api/phone/verify-code", { method: "POST", body, base: UDJ }),
 
-  // 일지 · 일기
+  // 학교생활일지 · 수업일지
   journalMeta: () => request("/api/journal-meta"),
-  journals: () => request("/api/journals"),
+  // kind: "" | "all" | "class" | "school" — 서버에서 수업일지·학교생활일지를 가른다
+  journals: (kind = "") => request("/api/journals", { params: { kind } }),
   journal: (id) => request(`/api/journals/${id}`),
   createJournal: (body) => request("/api/journals", { method: "POST", body }),
   updateJournal: (id, body) => request(`/api/journals/${id}`, { method: "PUT", body }),
@@ -119,9 +120,15 @@ export const api = {
   analyzeJournal: (journalId) =>
     request(`/api/journals/${journalId}/analyze`, { method: "POST" }),
   aiJob: (jobId) => request(`/api/ai/jobs/${jobId}`),
-  generateEssay: (question, journal_ids, character_limit) =>
+  // extra: { job_category, topic, answers:[{question, answer}] }
+  generateEssay: (question, journal_ids, character_limit, extra = {}) =>
     request("/api/cover-letters/generate", {
-      method: "POST", body: { question, journal_ids, character_limit },
+      method: "POST", body: { question, journal_ids, character_limit, ...extra },
+    }),
+  // 지원동기·입사 후 목표를 쓰기 전에 답할 질문(1~2학년 기록 기반)
+  motiveQuestions: (topic, job_category) =>
+    request("/api/cover-letters/motive-questions", {
+      method: "POST", body: { topic, job_category },
     }),
   verifyEssay: (draft, journal_ids) =>
     request("/api/cover-letters/verify", {
@@ -152,8 +159,28 @@ export const api = {
 
   notificationsSummary: () => request("/api/notifications/summary"),
 
+  // 기록해 공지사항(UDJ 공지와 별개)
+  notices: (params) => request("/api/notices", { params }),
+  notice: (id) => request(`/api/notices/${id}`),
+  adminNotices: () => request("/api/admin/notices"),
+  createAdminNotice: (body) => request("/api/admin/notices", { method: "POST", body }),
+  updateAdminNotice: (id, body) => request(`/api/admin/notices/${id}`, { method: "PUT", body }),
+  publishAdminNotice: (id) => request(`/api/admin/notices/${id}/publish`, { method: "POST" }),
+  unpublishAdminNotice: (id) => request(`/api/admin/notices/${id}/unpublish`, { method: "POST" }),
+  deleteAdminNotice: (id) => request(`/api/admin/notices/${id}`, { method: "DELETE" }),
+  previewAdminNotice: (body) => request("/api/admin/notices/preview", { method: "POST", body }),
+  adminNoticeLogs: (id) => request(`/api/admin/notices/${id}/logs`),
+  retryFailedNotice: (id) => request(`/api/admin/notices/${id}/retry-failed`, { method: "POST" }),
+  retryNotificationLog: (id) => request(`/api/admin/notification-logs/${id}/retry`, { method: "POST" }),
+  schoolNoticeSettings: () => request("/api/school/notification-settings"),
+  saveSchoolNoticeSettings: (body) => request("/api/school/notification-settings", { method: "PUT", body }),
+
   // 구독
   subscription: () => request("/api/subscription/me"),
+  trialStatus: () => request("/api/subscription/trial-status"),
+  adminTrialStats: (params) => request("/api/admin/trial/stats", { params }),
+  adminTrialUsers: (params) => request("/api/admin/trial/users", { params }),
+  adminEditTrial: (id, body) => request(`/api/admin/trial/users/${id}`, { method: "PUT", body }),
 
   // 학교 좌석 (결제 주체가 학교로 바뀌었다). product 는 "essay"(자기소개서) 뿐이다 —
   // 연구는 별도 서비스로 옮겨 갔다.
@@ -175,6 +202,22 @@ export const api = {
     }),
   toggleSeatCode: (id) =>
     request(`/api/school/seat-codes/${id}/toggle`, { method: "POST" }),
+  // 개인 구매 · 학년
+  setMyGrade: (grade, school_level = "high") =>
+    request("/api/me/grade", { method: "PUT", body: { grade, school_level } }),
+  createPersonalOrder: (body) => request("/api/personal/orders", { method: "POST", body }),
+  confirmPersonalCard: (payment_key, order_id, amount) =>
+    request("/api/personal/orders/confirm", { method: "POST", body: { payment_key, order_id, amount } }),
+  failPersonalCard: (orderId) =>
+    request(`/api/personal/orders/${encodeURIComponent(orderId)}/fail`, { method: "POST" }),
+  myPersonalOrders: () => request("/api/personal/orders"),
+  cancelPersonalOrder: (id) => request(`/api/personal/orders/${id}/cancel`, { method: "POST" }),
+  adminPersonalOrders: (status = "") => request("/api/admin/personal-orders", { params: { status } }),
+  approvePersonalOrder: (id) => request(`/api/admin/personal-orders/${id}/approve`, { method: "POST" }),
+  rejectPersonalOrder: (id, note) =>
+    request(`/api/admin/personal-orders/${id}/reject`, { method: "POST", body: { note } }),
+  refundPersonalOrder: (id, amount, reason) =>
+    request(`/api/admin/personal-orders/${id}/refund`, { method: "POST", body: { amount, reason } }),
   redeemSeatCode: (code, student_no) =>
     request("/api/seat-codes/redeem", {
       method: "POST",
@@ -197,8 +240,8 @@ export const api = {
   refundPolicy: () => request("/api/refund-policy", { noAuth: true }),
 
   // 자기소개서 (구독 필요)
-  coverLetterMaterials: (topic) =>
-    request("/api/cover-letters/materials", { params: { topic } }),
+  coverLetterMaterials: (topic, job) =>
+    request("/api/cover-letters/materials", { params: { topic, job } }),
   reviewCoverLetter: (fields, limit) =>
     request("/api/cover-letters/review", { method: "POST", body: { fields, limit } }),
   coverLetters: () => request("/api/cover-letters"),

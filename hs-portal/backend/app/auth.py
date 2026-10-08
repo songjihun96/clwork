@@ -104,10 +104,23 @@ def require_roles(*roles: Role):
 
 
 require_admin = require_roles(Role.admin)
-require_school = require_roles(Role.school)
-require_student = require_roles(Role.student)
-require_teacher = require_roles(Role.teacher)
 
-# 학급 이관. 선생님은 자기 학생만, 학교 계정은 전교생을 옮길 수 있다.
-# 진급 때는 학년 전체가 한꺼번에 바뀌므로 학교 계정에도 길을 열어둔다.
-require_class_manager = require_roles(Role.teacher, Role.school)
+
+def school_level_of(user: User) -> str:
+    """학교 계정의 학교급. 학교가 없거나 값이 비면 고등학교로 본다(예전 계정)."""
+    s = getattr(user, "school", None)
+    return (getattr(s, "school_level", None) or "high") if s is not None else "high"
+
+
+# 중학교·고등학교 학교 계정이 함께 쓰는 기능(공지 알림 설정 등).
+require_school_any = require_roles(Role.school)
+
+
+def require_school(user: User = Depends(require_school_any)) -> User:
+    """고등학교 학교 계정 전용. 학교 홍보·운영 기능(학교 정보·일정·문의·진학정보·
+    플랜 등)은 전부 이걸 쓴다. 중학교 계정은 화면에서 숨길 뿐 아니라 여기서 막는다."""
+    if school_level_of(user) == "middle":
+        raise HTTPException(status_code=403,
+                            detail="중학교 학교 계정에서는 이용할 수 없는 기능입니다.")
+    return user
+require_student = require_roles(Role.student)

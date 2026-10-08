@@ -176,11 +176,10 @@ export default function GraduateVideo() {
               </p>
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 {first ? (
-                  <button className="btn btn-signal"
-                    onClick={() => start(first.src, first.ci, first.ii)}
-                    style={{ fontSize: 15, padding: "11px 22px" }}>
-                    ▶ 시청하기
-                  </button>
+                  /* 대표 화면은 설명만 한다. 재생은 아래 커리큘럼의 강의를 눌러 시작한다. */
+                  <span className="hero-play-hint">
+                    아래 커리큘럼에서 보고 싶은 강의를 누르면 재생됩니다.
+                  </span>
                 ) : (
                   <span style={{ fontSize: 13.5, opacity: .85 }}>
                     {data.owned

@@ -80,6 +80,39 @@
         "dev"
       ],
       "port": 5176
+    },
+    {
+      "name": "udj-demo-backend",
+      "runtimeExecutable": "hs-portal/video/school-demo/.venv/Scripts/python.exe",
+      "runtimeArgs": ["hs-portal/video/school-demo/run_backend.py"],
+      "port": 8800
+    },
+    {
+      "name": "udj-demo-frontend",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "cd /d hs-portal\\frontend && npx vite --config ..\\video\\school-demo\\vite.demo.config.mjs"
+      ],
+      "port": 5190
+    },
+    {
+      "name": "audiobook-api",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "cd /d C:\\Users\\user\\Desktop\\woori_sw\\ai-audiobook && set PACKAGE_SIGNING_KEY_PATH=keys\\dev.pem&& set STUDIO_TTS_ENGINE=sapi&& .venv\\Scripts\\python.exe -m uvicorn app.main:create_app --factory --app-dir services/api --port 8000"
+      ],
+      "port": 8000
+    },
+    {
+      "name": "audiobook-studio",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "cd /d C:\\Users\\user\\Desktop\\woori_sw\\ai-audiobook\\apps\\studio && npm run dev"
+      ],
+      "port": 5180
     }
   ]
 }

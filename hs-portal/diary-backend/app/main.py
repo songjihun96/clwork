@@ -37,7 +37,7 @@ from .auth import (
 from .database import Base, SessionLocal, engine, get_db
 from .models import (
     ORDER_STATUS_LABEL, AuditLog, CoverLetter, JournalEntry, OrderStatus, Role,
-    AiConsent, AiJob, JournalAnalysis,
+    AiConsent, AiJob, JournalAnalysis, JournalResumeTag,
     SchoolSeat, SchoolSubject, SeatCode, SeatHolder, SeatOrder, Setting, Subscription,
     SubscriptionOrder, UnmatchedDeposit, User,
     TeacherSubjectAssignment, StudentEnrollment, StudentRecordAiDraft,
@@ -66,6 +66,24 @@ def _ensure_columns() -> None:
             "subject_id": "INTEGER",
             "title": "VARCHAR(120) DEFAULT ''",
         },
+        "cover_letters": {
+            # 희망 직업군과, 지원동기·입사 후 목표에서 AI 가 만든 질문·학생의 답.
+            # 예전 자소서는 비어 있고(직업군 안 고름) 그대로 열린다.
+            "job_category": "VARCHAR(40) DEFAULT ''",
+            "question_answers": "TEXT DEFAULT '{}'",
+            # 항목별로 학생이 직접 고른 기록
+            "picked_records": "TEXT DEFAULT '{}'",
+        },
+        "users": {
+            # 개인 구매 학생의 학년 자동 계산. 기존 학생은 비어 있어 예전과 같다.
+            "grade_base": "INTEGER",
+            "grade_base_year": "INTEGER",
+            "school_level": "VARCHAR(10) DEFAULT 'high'",
+            # 첫 달 무료. 기존 학생은 비어 있어 무료 대상이 아니다(예전과 같다).
+            "free_trial_start_at": "TIMESTAMP",
+            "free_trial_end_at": "TIMESTAMP",
+            "login_count": "INTEGER DEFAULT 0",
+        },
         "seat_orders": {
             "discount_percent": "INTEGER DEFAULT 0",
             "product": "VARCHAR(20) DEFAULT 'essay'",
@@ -89,6 +107,7 @@ def _ensure_columns() -> None:
             "source_kind": "VARCHAR(20) DEFAULT 'journal'",
         },
         "subscription_orders": {
+            "is_test": "BOOLEAN DEFAULT FALSE",
             "depositor_name": "VARCHAR(40) DEFAULT ''",
             "bank_key": "VARCHAR(20) DEFAULT ''",
             "refund_amount": "INTEGER DEFAULT 0",
@@ -350,11 +369,17 @@ class JournalIn(BaseModel):
     subject: str = Field(default="", max_length=80)
     teacher_name: str = Field(default="", max_length=60)
     content: dict = Field(default_factory=dict)
+    # 자기소개서 항목 카테고리(ai.RESUME_CATEGORY_KEYS). None 이면 건드리지 않는다 —
+    # 예전 화면·다른 곳에서 부르는 저장이 학생이 달아 둔 카테고리를 지우면 안 된다.
+    resume_tags: Optional[List[str]] = None
 
 
 class CoverLetterIn(BaseModel):
     title: str = Field(default="", max_length=120)
     content: dict = Field(default_factory=dict)
+    job_category: Optional[str] = Field(default=None, max_length=40)
+    question_answers: Optional[dict] = None
+    picked_records: Optional[dict] = None
 
 
 class WritingReviewIn(BaseModel):
@@ -462,13 +487,19 @@ def upsert_user(db: Session, profile: dict) -> User:
     udj_user_id 를 기준으로 찾는다. 이메일은 바뀔 수 있어 기준이 될 수 없다.
     """
     user = db.query(User).filter(User.udj_user_id == profile["udj_user_id"]).first()
+    is_new = user is None
     if not user:
         user = User(udj_user_id=profile["udj_user_id"])
         db.add(user)
     user.apply_profile(profile)
     user.last_login_at = datetime.utcnow()
+    user.login_count = (user.login_count or 0) + 1
+    # 기록해에 처음 들어온 학생 = 신규 가입자. 첫 달 무료를 시작한다.
+    if is_new and user.role == Role.student:
+        start_free_trial(db, user)
     db.commit()
     db.refresh(user)
+    refresh_auto_grade(db, user)
     return user
 
 
@@ -484,6 +515,9 @@ def user_out(user: User) -> dict:
         "grade": user.grade,
         "verified": bool(user.verified),
         "class_name": user.class_name or "",
+        # 학년을 자동으로 계산하는 개인 학생인지(학교 소속 학생은 false)
+        "grade_auto": bool(user.grade_base_year),
+        "school_level": user.school_level or "high",
     }
 
 
@@ -516,6 +550,115 @@ def journal_content(e: JournalEntry) -> dict:
         return data if isinstance(data, dict) else {}
     except (ValueError, TypeError):
         return {}
+
+
+def journal_tags(db: Session, journal_ids: List[int]) -> Dict[int, List[str]]:
+    """일지마다 달아 둔 자소서 카테고리. 순서는 카테고리 순서를 따른다."""
+    if not journal_ids:
+        return {}
+    got: Dict[int, set] = {}
+    for jid, cat in (db.query(JournalResumeTag.journal_id, JournalResumeTag.category)
+                     .filter(JournalResumeTag.journal_id.in_(journal_ids)).all()):
+        got.setdefault(jid, set()).add(cat)
+    return {jid: ai.clean_categories(cats) for jid, cats in got.items()}
+
+
+def set_journal_tags(db: Session, e: JournalEntry, keys) -> List[str]:
+    """일지의 카테고리를 통째로 바꾼다. 모르는 키는 조용히 버린다."""
+    wanted = ai.clean_categories(keys)
+    db.query(JournalResumeTag).filter(JournalResumeTag.journal_id == e.id).delete(
+        synchronize_session=False)
+    for k in wanted:
+        db.add(JournalResumeTag(journal_id=e.id, user_id=e.user_id, category=k))
+    return wanted
+
+
+def school_year_of(d) -> int:
+    """학년도. 3월에 새 학년이 시작한다."""
+    return d.year if d.month >= 3 else d.year - 1
+
+
+def grade_at(user: User, d) -> Optional[int]:
+    """그 날짜에 이 학생이 몇 학년이었는지. 지금 학년을 모르면 None."""
+    if not user.grade or not d:
+        return None
+    return user.grade - (school_year_of(date.today()) - school_year_of(d))
+
+
+def cover_letter_out(r: CoverLetter) -> dict:
+    try:
+        content = json.loads(r.content or "{}")
+    except (ValueError, TypeError):
+        content = {}
+    try:
+        qa = json.loads(r.question_answers or "{}")
+    except (ValueError, TypeError):
+        qa = {}
+    return {"id": r.id, "title": r.title, "content": content,
+            "job_category": r.job_category or "",
+            "job_label": ai.JOB_LABEL.get(r.job_category or "", ""),
+            "question_answers": qa if isinstance(qa, dict) else {},
+            "picked_records": _load_picks(r.picked_records),
+            "created_at": r.created_at, "updated_at": r.updated_at}
+
+
+def _load_picks(raw) -> Dict[str, List[int]]:
+    try:
+        data = json.loads(raw or "{}")
+    except (ValueError, TypeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+PICKS_PER_ITEM = 5
+
+
+def _clean_picks(db: Session, user: User, value) -> Optional[str]:
+    """{항목키: [일지 id]} — 아는 항목, 내 일지만, 항목마다 5개까지.
+    None 이면 바꾸지 않는다. 남의 일지 번호는 조용히 뺀다."""
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise HTTPException(status_code=400, detail="고른 기록 형식이 올바르지 않습니다.")
+    mine = {jid for (jid,) in db.query(JournalEntry.id).filter(JournalEntry.user_id == user.id).all()}
+    out = {}
+    for key, ids in value.items():
+        if key not in ai.ALL_TEMPLATES or not isinstance(ids, list):
+            continue
+        seen = []
+        for i in ids:
+            try:
+                i = int(i)
+            except (TypeError, ValueError):
+                continue
+            if i in mine and i not in seen:
+                seen.append(i)
+        if seen:
+            out[key] = seen[:PICKS_PER_ITEM]
+    return json.dumps(out)
+
+
+def _clean_job(value) -> Optional[str]:
+    """None 이면 바꾸지 않음. 빈 값은 '고르지 않음'. 모르는 값은 거절."""
+    if value is None:
+        return None
+    v = str(value).strip()
+    if v and v not in ai.JOB_LABEL:
+        raise HTTPException(status_code=400, detail="알 수 없는 직업군입니다.")
+    return v
+
+
+def _clean_question_answers(value) -> Optional[str]:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise HTTPException(status_code=400, detail="질문·답변 형식이 올바르지 않습니다.")
+    keep = {k: v for k, v in value.items() if k in ("apply_motive", "future_goal")
+            and isinstance(v, dict)}
+    raw = json.dumps(keep, ensure_ascii=False)
+    if len(raw) > 60000:
+        raise HTTPException(status_code=400, detail="답변이 너무 깁니다.")
+    return raw
 
 
 # ══════════════════════════════════════════════════════════
@@ -563,6 +706,7 @@ def me(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
         user.apply_profile(profile)
         db.commit()
         db.refresh(user)
+    refresh_auto_grade(db, user)
     return user_out(user)
 
 
@@ -652,6 +796,9 @@ def delete_me(payload: DeleteIn, request: Request,
         db.query(JournalAnalysis).filter(
             JournalAnalysis.journal_id.in_(journal_ids)
         ).delete(synchronize_session=False)
+        db.query(JournalResumeTag).filter(
+            JournalResumeTag.journal_id.in_(journal_ids)
+        ).delete(synchronize_session=False)
         db.query(JournalEntry).filter(
             JournalEntry.id.in_(journal_ids)
         ).delete(synchronize_session=False)
@@ -688,9 +835,17 @@ def journal_meta():
     return {
         "kinds": [
             {"kind": k, "label": ai.KIND_LABEL.get(k, k),
-             "fields": [{"key": key, "label": label} for key, label in ai.field_labels(k)]}
+             "fields": ai.input_fields(k),
+             # 예전 양식에만 있던 칸. 그 칸에 글이 있는 일지를 열 때만 보여 준다.
+             "legacy_fields": ai.legacy_fields(k),
+             "sections": ai.LESSON_SECTIONS if k == "lesson" else []}
             for k in ("diary", "lesson")
         ],
+        # 일지에 다는 "자기소개서 항목 카테고리". 여러 개 고를 수 있다.
+        "resume_categories": [{"key": k, "label": ai.RESUME_TEMPLATES[k]}
+                              for k in ai.RESUME_CATEGORY_KEYS],
+        # 자소서의 희망 직업군.
+        "job_categories": [{"key": k, "label": label} for k, label, _ in ai.JOB_CATEGORIES],
         "resume_templates": [{"key": k, "label": v} for k, v in ai.RESUME_TEMPLATES.items()],
         # 예전 양식에만 있던 항목. 이미 글을 쓴 학생이 그것을 잃지 않도록
         # 이름만 함께 내려준다. 새로 고를 수는 없다.
@@ -789,14 +944,21 @@ def journal_subjects(db: Session = Depends(get_db),
     }
 
 
+# 화면 주소(?type=)에 쓰는 이름과 저장된 종류(kind)를 잇는다.
+JOURNAL_TYPE_ALIAS = {"all": None, "": None, "class": "lesson", "lesson": "lesson",
+                      "school": "diary", "diary": "diary"}
+
+
 @app.get("/api/journals")
-def list_journals(db: Session = Depends(get_db), user: User = Depends(require_student)):
-    rows = (
-        db.query(JournalEntry)
-        .filter(JournalEntry.user_id == user.id)
-        .order_by(JournalEntry.entry_date.desc(), JournalEntry.id.desc())
-        .all()
-    )
+def list_journals(kind: str = Query("", description="all | class(lesson) | school(diary)"),
+                  db: Session = Depends(get_db), user: User = Depends(require_student)):
+    """내 일지. kind 로 수업일지·학교생활일지만 골라 받을 수 있다(서버에서 거른다)."""
+    if kind not in JOURNAL_TYPE_ALIAS:
+        raise HTTPException(status_code=400, detail="일지 종류가 올바르지 않습니다.")
+    q = db.query(JournalEntry).filter(JournalEntry.user_id == user.id)
+    if JOURNAL_TYPE_ALIAS[kind]:
+        q = q.filter(JournalEntry.kind == JOURNAL_TYPE_ALIAS[kind])
+    rows = q.order_by(JournalEntry.entry_date.desc(), JournalEntry.id.desc()).all()
     def preview_of(e) -> str:
         """목록에서 어떤 일지인지 알아볼 만큼만. 본문은 상세에서 읽는다.
 
@@ -813,10 +975,12 @@ def list_journals(db: Session = Depends(get_db), user: User = Depends(require_st
                 return body[:60]
         return ""
 
+    tags = journal_tags(db, [e.id for e in rows])
     return [{
         "id": e.id, "kind": e.kind, "entry_date": e.entry_date,
         "kind_label": ai.KIND_LABEL.get(e.kind, e.kind),
         "title": e.title or "",
+        "resume_tags": tags.get(e.id, []),
         "subject": e.subject or "", "subject_id": e.subject_id,
         "teacher_name": e.teacher_name or "",
         "preview": preview_of(e),
@@ -861,6 +1025,7 @@ def get_journal(journal_id: int, db: Session = Depends(get_db),
         "subject": e.subject or "", "subject_id": e.subject_id,
         "teacher_name": e.teacher_name or "",
         "content": journal_content(e), "sent_at": e.sent_at,
+        "resume_tags": journal_tags(db, [e.id]).get(e.id, []),
         "share_token": e.share_token or "",
         "feedback": e.feedback or "",
         "feedback_by_name": e.feedback_by_name or "",
@@ -907,9 +1072,11 @@ def create_journal(payload: JournalIn, db: Session = Depends(get_db),
         content=json.dumps(payload.content or {}, ensure_ascii=False),
     )
     db.add(e)
+    db.flush()
+    tags = set_journal_tags(db, e, payload.resume_tags or [])
     db.commit()
     db.refresh(e)
-    return {"id": e.id}
+    return {"id": e.id, "resume_tags": tags}
 
 
 @app.put("/api/journals/{journal_id}")
@@ -929,8 +1096,10 @@ def update_journal(journal_id: int, payload: JournalIn, db: Session = Depends(ge
     e.subject_id = (_resolve_subject_id(db, user, payload.subject)
                     if payload.kind == "lesson" else None)
     e.content = json.dumps(payload.content or {}, ensure_ascii=False)
+    if payload.resume_tags is not None:
+        set_journal_tags(db, e, payload.resume_tags)
     db.commit()
-    return {"ok": True}
+    return {"ok": True, "resume_tags": journal_tags(db, [e.id]).get(e.id, [])}
 
 
 @app.delete("/api/journals/{journal_id}")
@@ -939,6 +1108,8 @@ def delete_journal(journal_id: int, db: Session = Depends(get_db),
     e = db.get(JournalEntry, journal_id)
     if not e or e.user_id != user.id:
         raise HTTPException(status_code=404, detail="기록을 찾을 수 없습니다.")
+    db.query(JournalResumeTag).filter(JournalResumeTag.journal_id == e.id).delete(
+        synchronize_session=False)
     db.delete(e)
     db.commit()
     return {"ok": True}
@@ -1583,6 +1754,9 @@ def subscription_active(db: Session, user: User, product: str = "essay") -> bool
         old_sub = db.query(Subscription).filter(Subscription.user_id == user.id).first()
         if old_sub and old_sub.expires_at > now:
             return True
+        # 첫 달 무료 기간. 자기소개서만 연다(연구는 학교 좌석 상품이라 그대로).
+        if trial_active(user, now):
+            return True
 
     seat = school_seat(db, user.school_id, product)
     if not seat or seat.expires_at <= now:
@@ -1632,6 +1806,19 @@ def my_subscription(db: Session = Depends(get_db), user: User = Depends(get_curr
     return {
         "active": subscription_active(db, user),
         "expires_at": sub.expires_at if sub else None,
+        # 이용권이 어디서 왔는지: school(학교 좌석) / individual(개인 구매) / both / none
+        "access_type": access_type(db, user),
+        "personal": {
+            "active": personal_active(db, user),
+            "expires_at": sub.expires_at if sub else None,
+            "plans": personal_plans(db),
+            "pay_methods": {"card": use_toss(db), "bank": bank_ready(db)},
+            "client_key": toss.client_key() if use_toss(db) else "",
+        },
+        "grade_auto": bool(user.grade_base_year),
+        "school_managed": school_managed(db, user),
+        # 첫 달 무료 상태. 결제 화면·배너가 남은 기간과 종료 안내를 그린다.
+        "trial": trial_status(db, user),
         "price_per_month": subscription_price(db),
         # 결제 화면이 카드용인지 무통장용인지 미리 알아야 입력칸을 맞게 보여준다.
         "pay_with": "toss" if use_toss(db) else "bank",
@@ -2223,6 +2410,17 @@ def toggle_seat_code(code_id: int, db: Session = Depends(get_db),
     return code_out(x)
 
 
+def _school_name_of(db: Session, code: SeatCode) -> str:
+    """코드를 만든 사람(선생님·학교 계정)의 학교 이름. 없으면 같은 학교 다른 계정에서."""
+    maker = db.get(User, code.created_by) if code.created_by else None
+    if maker and maker.school_id == code.school_id and maker.school_name:
+        return maker.school_name
+    row = (db.query(User.school_name)
+           .filter(User.school_id == code.school_id, User.school_name != "")
+           .first())
+    return row[0] if row else ""
+
+
 @app.post("/api/seat-codes/redeem")
 def redeem_seat_code(payload: dict, request: Request, db: Session = Depends(get_db),
                      user: User = Depends(get_current_user)):
@@ -2240,10 +2438,21 @@ def redeem_seat_code(payload: dict, request: Request, db: Session = Depends(get_
     # 어느 학교 코드인지까지 알려주지 않는다. 코드를 찍어보는 것을 돕지 않기 위해서다.
     if not x or not x.is_active:
         raise HTTPException(status_code=400, detail="쓸 수 없는 코드입니다. 다시 확인해주세요.")
-    if x.school_id != user.school_id:
-        raise HTTPException(status_code=400, detail="우리 학교 코드가 아닙니다.")
     if x.expires_at and x.expires_at <= datetime.utcnow():
         raise HTTPException(status_code=400, detail="기간이 지난 코드입니다.")
+    if x.school_id != user.school_id:
+        # 재학생 인증까지 끝난 학생이 다른 학교 코드를 넣으면 막는다(코드가 새어
+        # 다른 학교 학생이 좌석을 쓰는 것을 막기 위해서다).
+        if user.school_id and user.verified:
+            raise HTTPException(
+                status_code=400,
+                detail=(f"우리 학교 코드가 아닙니다. 지금 소속은 {user.school_name or '다른 학교'}"
+                        "입니다. 선생님께 받은 코드인지 다시 확인해주세요."))
+        # 아직 학교가 정해지지 않은(재학생 인증 전) 학생은 코드를 준 학교로 소속을
+        # 정한다. 예전에는 여기서 "우리 학교 코드가 아닙니다"로 막혀, 인증을 안 한
+        # 학생은 선생님께 받은 코드를 아무리 넣어도 등록되지 않았다.
+        user.school_id = x.school_id
+        user.school_name = _school_name_of(db, x) or user.school_name
 
     already = db.query(SeatHolder).filter(
         SeatHolder.school_id == user.school_id, SeatHolder.user_id == user.id,
@@ -2295,6 +2504,9 @@ def redeem_seat_code(payload: dict, request: Request, db: Session = Depends(get_
     moved = []
     if x.grade:
         user.grade = x.grade
+        # 이제 학교(선생님)가 학년을 정한다. 개인 학생의 자동 계산은 멈춘다.
+        user.grade_base = None
+        user.grade_base_year = None
         moved.append(f"{x.grade}학년")
     if x.class_no:
         user.class_name = x.class_no
@@ -2688,14 +2900,51 @@ def review_cover_letter(payload: WritingReviewIn,
 
 @app.get("/api/cover-letters/materials")
 def cover_letter_materials(topic: Optional[str] = Query(None, description="항목 키로 좁히기"),
+                           job: str = Query("", description="희망 직업군 키"),
                            db: Session = Depends(get_db),
                            user: User = Depends(require_subscription)):
-    """그동안 쓴 일지를 자소서 항목별로 모아준다. 새 문장을 지어내지 않는다."""
+    """그동안 쓴 일지를 자소서 항목별로 모아준다. 새 문장을 지어내지 않는다.
+
+    항목(topic)을 주면 "이 항목에 쓸 만한 내 기록"을 순서대로 준다 —
+    학생이 그 카테고리를 직접 달아 둔 일지 → 희망 직업군 단서가 있는 일지 →
+    항목 단서가 많은 일지.
+    """
     rows = (
         db.query(JournalEntry)
         .filter(JournalEntry.user_id == user.id)
         .order_by(JournalEntry.entry_date.desc()).all()
     )
+    if topic:
+        tags = journal_tags(db, [e.id for e in rows])
+        journals = []
+        passage_count = 0
+        for e in rows:
+            labels = dict(ai.field_labels(e.kind))
+            passages = [{"field_key": k, "field_label": labels[k], "text": v.strip()}
+                        for k, v in journal_content(e).items()
+                        if k in labels and isinstance(v, str) and v.strip()]
+            passage_count += len(passages)
+            journals.append({"id": e.id, "kind": e.kind, "title": e.title or "",
+                             "entry_date": e.entry_date.isoformat() if e.entry_date else "",
+                             "passages": passages})
+        tagged = [jid for jid, cats in tags.items() if topic in cats]
+        job_key = job if job in ai.JOB_LABEL else ""
+        matches = ai.rank_topic_records(journals, topic, tagged, job_key)
+        return {
+            "journal_count": len(rows),
+            "passage_count": passage_count,
+            "topics": [{
+                "key": topic,
+                "label": ai.ALL_TEMPLATES.get(topic, topic),
+                "loose": topic in ai.LOOSE_TOPICS,
+                "count": len(matches),
+                "tagged_count": len(tagged),
+                "matches": matches,
+            }],
+            "job_label": ai.JOB_LABEL.get(job_key, ""),
+            "analyzed_at": datetime.utcnow(),
+        }
+
     entries = []
     for e in rows:
         labels = dict(ai.field_labels(e.kind))
@@ -2727,7 +2976,8 @@ def list_cover_letters(db: Session = Depends(get_db),
         db.query(CoverLetter).filter(CoverLetter.user_id == user.id)
         .order_by(CoverLetter.updated_at.desc()).all()
     )
-    return [{"id": r.id, "title": r.title, "updated_at": r.updated_at} for r in rows]
+    return [{"id": r.id, "title": r.title, "updated_at": r.updated_at,
+             "job_label": ai.JOB_LABEL.get(r.job_category or "", "")} for r in rows]
 
 
 @app.get("/api/cover-letters/{letter_id}")
@@ -2736,19 +2986,17 @@ def get_cover_letter(letter_id: int, db: Session = Depends(get_db),
     r = db.get(CoverLetter, letter_id)
     if not r or r.user_id != user.id:
         raise HTTPException(status_code=404, detail="자기소개서를 찾을 수 없습니다.")
-    try:
-        content = json.loads(r.content or "{}")
-    except (ValueError, TypeError):
-        content = {}
-    return {"id": r.id, "title": r.title, "content": content,
-            "created_at": r.created_at, "updated_at": r.updated_at}
+    return cover_letter_out(r)
 
 
 @app.post("/api/cover-letters")
 def create_cover_letter(payload: CoverLetterIn, db: Session = Depends(get_db),
                         user: User = Depends(require_subscription)):
     r = CoverLetter(user_id=user.id, title=(payload.title or "제목 없음")[:120],
-                    content=json.dumps(payload.content or {}, ensure_ascii=False))
+                    content=json.dumps(payload.content or {}, ensure_ascii=False),
+                    job_category=_clean_job(payload.job_category) or "",
+                    question_answers=_clean_question_answers(payload.question_answers) or "{}",
+                    picked_records=_clean_picks(db, user, payload.picked_records) or "{}")
     db.add(r)
     db.commit()
     db.refresh(r)
@@ -2817,6 +3065,15 @@ def update_cover_letter(letter_id: int, payload: CoverLetterIn,
         raise HTTPException(status_code=404, detail="자기소개서를 찾을 수 없습니다.")
     r.title = (payload.title or "제목 없음")[:120]
     r.content = json.dumps(payload.content or {}, ensure_ascii=False)
+    job = _clean_job(payload.job_category)
+    if job is not None:
+        r.job_category = job
+    qa = _clean_question_answers(payload.question_answers)
+    if qa is not None:
+        r.question_answers = qa
+    picks = _clean_picks(db, user, payload.picked_records)
+    if picks is not None:
+        r.picked_records = picks
     db.commit()
     return {"ok": True}
 
@@ -4476,10 +4733,16 @@ def request_essay(payload: dict, db: Session = Depends(get_db),
         raise HTTPException(status_code=400, detail="자소서 항목을 골라주세요.")
 
     ids = payload.get("journal_ids") or []
-    if not isinstance(ids, list) or not ids:
+    # 지원동기·입사 후 목표는 학생이 질문에 직접 답한 말이 재료다.
+    answers = _clean_answers(payload.get("answers"))
+    if not isinstance(ids, list) or (not ids and not answers):
         raise HTTPException(status_code=400, detail="쓸 경험을 골라주세요.")
     if len(ids) > 5:
         raise HTTPException(status_code=400, detail="경험(일지·연구)은 합쳐서 5개까지 고를 수 있습니다.")
+    try:
+        ids = [int(i) for i in ids]
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="경험 번호가 올바르지 않습니다.")
 
     try:
         limit = int(payload.get("character_limit") or ai_service.DEFAULT_LIMIT)
@@ -4487,11 +4750,85 @@ def request_essay(payload: dict, db: Session = Depends(get_db),
         limit = ai_service.DEFAULT_LIMIT
     limit = min(max(limit, 200), 3000)
 
+    job_key = _clean_job(payload.get("job_category")) or ""
+    topic = str(payload.get("topic") or "")
     job = ai_jobs.enqueue(db, user.id, "generate", {
-        "question": question, "journal_ids": [int(i) for i in ids],
-        "limit": limit,
+        "question": question, "journal_ids": ids,
+        "limit": limit, "job_category": job_key,
+        "topic": topic if topic in ai.ALL_TEMPLATES else "",
+        "answers": answers,
     })
     return {"status": "queued", "job_id": job.id}
+
+
+def _clean_answers(raw) -> List[dict]:
+    """[{question, answer}] 중 답이 있는 것만. 너무 길면 자른다."""
+    out = []
+    for it in (raw or [])[:8] if isinstance(raw, list) else []:
+        if not isinstance(it, dict):
+            continue
+        q = str(it.get("question") or "").strip()[:300]
+        a = str(it.get("answer") or "").strip()[:1500]
+        if q and a:
+            out.append({"question": q, "answer": a})
+    return out
+
+
+@app.post("/api/cover-letters/motive-questions")
+def request_motive_questions(payload: dict, db: Session = Depends(get_db),
+                             user: User = Depends(require_subscription)):
+    """지원동기·입사 후 목표를 쓰기 전에 답할 질문을 만들어 달라고 맡긴다.
+
+    재료는 이 학생의 1~2학년 기록이다(지금 학년을 모르면 전부). 학생이
+    카테고리를 고르지 않아도 된다 — 서버가 기록을 골라 넘긴다.
+    """
+    require_ai(db, user)
+    topic = str(payload.get("topic") or "")
+    if topic not in ai_service.MOTIVE_TOPICS:
+        raise HTTPException(status_code=400, detail="지원동기나 입사 후 목표에서만 쓸 수 있습니다.")
+    job_key = _clean_job(payload.get("job_category")) or ""
+    ids = [r["record_id"] for r in _motive_records(db, user, topic, job_key)]
+    if not ids:
+        raise HTTPException(status_code=400,
+                            detail="아직 쓴 일지가 없습니다. 학교생활일지나 수업일지를 먼저 남겨 주세요.")
+    job = ai_jobs.enqueue(db, user.id, "motive_questions", {
+        "topic": topic, "job_category": job_key, "journal_ids": ids,
+    })
+    return {"status": "queued", "job_id": job.id, "record_count": len(ids)}
+
+
+MOTIVE_MAX_RECORDS = 12
+MOTIVE_MAX_CHARS = 700
+
+
+def _motive_records(db: Session, user: User, topic: str, job_key: str) -> List[dict]:
+    """질문 재료로 넘길 1~2학년 기록. 직업군·진로 단서가 많은 것부터 몇 개만.
+
+    전부 보내면 돈이 들고, AI 도 핵심을 놓친다. 진로를 말한 대목이 있는
+    기록(job_motive 단서·직업군 단서·학생이 직무 계기 카테고리를 단 것)을 앞에 둔다.
+    """
+    rows = (db.query(JournalEntry).filter(JournalEntry.user_id == user.id)
+            .order_by(JournalEntry.entry_date.desc()).all())
+    in_range = [e for e in rows if grade_at(user, e.entry_date) in (None, 1, 2)]
+    # 1~2학년 기록이 하나도 없으면(3학년에 처음 쓴 학생) 있는 것으로라도 묻는다.
+    pool = in_range or rows
+    tags = journal_tags(db, [e.id for e in pool])
+    kw = (ai.RESUME_KEYWORDS.get("job_motive", []) + ai.RESUME_KEYWORDS.get(topic, [])
+          + ai.JOB_KEYWORDS.get(job_key, []))
+    scored = []
+    for e in pool:
+        text = ai_service.journal_text(e, journal_content(e))
+        if not text.strip():
+            continue
+        score, _ = ai.score_text(text, kw)
+        if "job_motive" in tags.get(e.id, []):
+            score += 5
+        scored.append((score, e.entry_date.isoformat() if e.entry_date else "", e, text))
+    scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    return [{"record_id": e.id, "entry_date": d,
+             "kind_label": ai.KIND_LABEL.get(e.kind, e.kind),
+             "title": e.title or "", "content": text[:MOTIVE_MAX_CHARS]}
+            for _s, d, e, text in scored[:MOTIVE_MAX_RECORDS]]
 
 
 @app.post("/api/cover-letters/verify")
@@ -4526,6 +4863,7 @@ def _load_experiences(db: Session, user_id: int, ids: List[int]) -> List[dict]:
     분석을 안 했다고 초안을 못 만들 이유는 없다.
     """
     out = []
+    tags = journal_tags(db, [int(i) for i in ids[:5]])
     for jid in ids[:5]:
         e = db.get(JournalEntry, jid)
         if not e or e.user_id != user_id:
@@ -4533,6 +4871,10 @@ def _load_experiences(db: Session, user_id: int, ids: List[int]) -> List[dict]:
         content = journal_content(e)
         text = ai_service.journal_text(e, content)
         digest = ai_service.content_hash(text)
+        # 학생이 이 일지를 어느 자소서 항목에 쓰고 싶다고 달아 두었는지.
+        # AI 가 문항과 같은 카테고리가 달린 경험을 중심에 두게 한다.
+        extra = {"kind": ai.KIND_LABEL.get(e.kind, e.kind), "title": e.title or "",
+                 "categories": [ai.RESUME_TEMPLATES[k] for k in tags.get(e.id, [])]}
 
         row = (db.query(JournalAnalysis)
                .filter(JournalAnalysis.journal_id == e.id,
@@ -4545,6 +4887,7 @@ def _load_experiences(db: Session, user_id: int, ids: List[int]) -> List[dict]:
             out.append({
                 "journal_id": e.id,
                 "entry_date": e.entry_date.isoformat() if e.entry_date else "",
+                **extra,
                 "experience": data.get("experience") or {},
                 "skills": data.get("skills") or [],
                 "content": row.cleaned_content or text,
@@ -4553,6 +4896,7 @@ def _load_experiences(db: Session, user_id: int, ids: List[int]) -> List[dict]:
             out.append({
                 "journal_id": e.id,
                 "entry_date": e.entry_date.isoformat() if e.entry_date else "",
+                **extra,
                 "content": text,
             })
     return out
@@ -4595,11 +4939,37 @@ def _job_generate(db: Session, user_id: int, payload: dict) -> dict:
     if not user:
         return {"ok": False, "error": "이용자를 찾을 수 없습니다."}
     exps = _load_experiences(db, user_id, payload.get("journal_ids") or [])
+    # 학생이 질문에 직접 답한 말도 경험으로 넘긴다(지원동기·입사 후 목표).
+    for a in payload.get("answers") or []:
+        exps.append({"type": "student_answer", "question": a.get("question", ""),
+                     "content": a.get("answer", "")})
     if not exps:
         return {"ok": False, "error": "고른 경험을 찾을 수 없습니다."}
-    return ai_service.generate_essay(
+    result = ai_service.generate_essay(
         str(payload.get("question") or ""), exps, user,
-        limit=int(payload.get("limit") or ai_service.DEFAULT_LIMIT))
+        limit=int(payload.get("limit") or ai_service.DEFAULT_LIMIT),
+        job=ai.JOB_LABEL.get(payload.get("job_category") or "", ""))
+    if result.get("ok"):
+        # 어떤 기록을 근거로 썼는지 화면에 보여 준다.
+        result["used_records"] = [
+            {"journal_id": x["journal_id"], "entry_date": x.get("entry_date", ""),
+             "kind": x.get("kind", ""), "title": x.get("title", "")}
+            for x in exps if x.get("journal_id")]
+    return result
+
+
+def _job_motive_questions(db: Session, user_id: int, payload: dict) -> dict:
+    user = db.get(User, user_id)
+    if not user:
+        return {"ok": False, "error": "이용자를 찾을 수 없습니다."}
+    topic = str(payload.get("topic") or "")
+    job_key = str(payload.get("job_category") or "")
+    wanted = {int(i) for i in (payload.get("journal_ids") or [])}
+    # 맡길 때 고른 기록을 다시 읽는다. 그 사이 지운 일지는 빠진다.
+    records = [r for r in _motive_records(db, user, topic, job_key)
+               if r["record_id"] in wanted]
+    return ai_service.generate_motive_questions(
+        topic, records, user, job=ai.JOB_LABEL.get(job_key, ""))
 
 
 def _job_verify(db: Session, user_id: int, payload: dict) -> dict:
@@ -4909,6 +5279,7 @@ def _job_image_caption(db: Session, user_id: int, payload: dict) -> dict:
 
 ai_jobs.register("analyze", _job_analyze)
 ai_jobs.register("generate", _job_generate)
+ai_jobs.register("motive_questions", _job_motive_questions)
 ai_jobs.register("verify", _job_verify)
 ai_jobs.register("subject_note", _job_subject_note)
 ai_jobs.register("observation_subject_note", _job_observation_subject_note)
@@ -4975,6 +5346,175 @@ def admin_stats(db: Session = Depends(get_db), user: User = Depends(require_admi
                 SubscriptionOrder.paid_at >= month_ago).all()
         ),
     }
+
+
+# ── 첫 달 무료: 관리자 ─────────────────────────────────────
+#
+# 개인정보를 새로 모으지 않는다. 이미 있는 것(가입일·무료 기간·결제 기록·일지·
+# 자기소개서·AI 작업·로그인 횟수)을 세기만 한다.
+
+def _trial_users_query(db: Session, d1: Optional[date], d2: Optional[date]):
+    q = db.query(User).filter(User.role == Role.student, User.free_trial_start_at.isnot(None))
+    if d1:
+        q = q.filter(User.free_trial_start_at >= kst_midnight_utc(d1))
+    if d2:
+        q = q.filter(User.free_trial_start_at < kst_midnight_utc(d2 + timedelta(days=1)))
+    return q
+
+
+def _opt_day(s: str) -> Optional[date]:
+    if not s:
+        return None
+    try:
+        return date.fromisoformat(s)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="날짜는 2026-09-01 형식으로 넣어 주세요.")
+
+
+@app.get("/api/admin/trial/stats")
+def admin_trial_stats(start: str = "", end: str = "", db: Session = Depends(get_db),
+                      user: User = Depends(require_admin)):
+    """첫 달 무료 지표. start~end 는 무료 시작일(=가입일) 기준, 비우면 전체.
+
+    전환율 = 유료 전환 / 무료 이용자. 아직 무료 중인 사람은 전환할 기회가 남아
+    있으므로 '무료가 끝난 사람 중 전환한 비율'도 함께 낸다."""
+    d1, d2 = _opt_day(start), _opt_day(end)
+    now = datetime.utcnow()
+    users = _trial_users_query(db, d1, d2).all()
+    ids = [u.id for u in users]
+
+    signup_q = db.query(func.count(User.id)).filter(User.role == Role.student)
+    if d1:
+        signup_q = signup_q.filter(User.created_at >= kst_midnight_utc(d1))
+    if d2:
+        signup_q = signup_q.filter(User.created_at < kst_midnight_utc(d2 + timedelta(days=1)))
+
+    active = [u for u in users if trial_active(u, now)]
+    ended = [u for u in users if u.free_trial_end_at and u.free_trial_end_at <= now]
+    paid_at = {u.id: first_paid_at(db, u) for u in users}
+    converted = [u for u in users if paid_at[u.id]]
+    converted_ended = [u for u in ended if paid_at[u.id]]
+    states: Dict[str, int] = {}
+    for u in users:
+        s = trial_state(db, u, now)
+        states[s] = states.get(s, 0) + 1
+
+    def count_in_trial(model, col):
+        """무료 기간 안에 만든 것만 센다."""
+        if not ids:
+            return 0
+        return (db.query(func.count(model.id)).join(User, User.id == model.user_id)
+                .filter(model.user_id.in_(ids), col >= User.free_trial_start_at,
+                        col < User.free_trial_end_at).scalar() or 0)
+
+    journals = count_in_trial(JournalEntry, JournalEntry.created_at)
+    letters = count_in_trial(CoverLetter, CoverLetter.created_at)
+    ai_jobs_n = count_in_trial(AiJob, AiJob.created_at)
+    # 무료 기간에 일지를 하나라도 쓴 사람 = 활성 이용자.
+    active_users = 0
+    if ids:
+        active_users = (db.query(func.count(func.distinct(JournalEntry.user_id)))
+                        .join(User, User.id == JournalEntry.user_id)
+                        .filter(JournalEntry.user_id.in_(ids),
+                                JournalEntry.created_at >= User.free_trial_start_at,
+                                JournalEntry.created_at < User.free_trial_end_at).scalar() or 0)
+    rate = lambda a, b: round(a * 100 / b, 1) if b else None  # noqa: E731
+    return {
+        "start": d1.isoformat() if d1 else None, "end": d2.isoformat() if d2 else None,
+        "enabled": trial_enabled(db), "months": trial_months(db),
+        "new_signups": signup_q.scalar() or 0,
+        "trial_users": len(users),
+        "trial_active": len(active),
+        "trial_active_users": active_users,
+        "trial_ended": len(ended),
+        "converted": len(converted),
+        "conversion_rate": rate(len(converted), len(users)),
+        "conversion_rate_ended": rate(len(converted_ended), len(ended)),
+        "by_status": [{"status": k, "label": TRIAL_STATE_LABEL[k], "count": states.get(k, 0)}
+                      for k in ("trial", "trial_ended", "paid", "school")],
+        "usage": {
+            "logins": sum(u.login_count or 0 for u in users),
+            "journals": journals,
+            "cover_letters": letters,
+            "ai_jobs": ai_jobs_n,
+        },
+    }
+
+
+@app.get("/api/admin/trial/users")
+def admin_trial_users(status: str = "", q: str = "", start: str = "", end: str = "",
+                      db: Session = Depends(get_db), user: User = Depends(require_admin)):
+    d1, d2 = _opt_day(start), _opt_day(end)
+    now = datetime.utcnow()
+    if q.strip():
+        # 이름·이메일로 찾을 때는 무료 대상이 아닌 학생도 보여 준다(무료를 새로 줄 수 있게).
+        like = f"%{q.strip()}%"
+        rows = (db.query(User).filter(User.role == Role.student,
+                                      or_(User.name.ilike(like), User.email.ilike(like)))
+                .order_by(User.created_at.desc()).limit(100).all())
+    else:
+        rows = (_trial_users_query(db, d1, d2)
+                .order_by(User.free_trial_start_at.desc()).limit(500).all())
+    out = []
+    for u in rows:
+        st = trial_state(db, u, now)
+        if status and st != status:
+            continue
+        t = trial_status(db, u)
+        out.append({
+            "id": u.id, "name": u.name, "email": u.email,
+            "created_at": u.created_at, "last_login_at": u.last_login_at,
+            "login_count": u.login_count or 0,
+            "trial_start_at": u.free_trial_start_at, "trial_end_at": u.free_trial_end_at,
+            "last_day": t["last_day"], "days_left": t["days_left"],
+            "status": st, "status_label": TRIAL_STATE_LABEL[st],
+            "converted_at": t["converted_at"],
+            "journals": db.query(func.count(JournalEntry.id)).filter(JournalEntry.user_id == u.id).scalar() or 0,
+            "cover_letters": db.query(func.count(CoverLetter.id)).filter(CoverLetter.user_id == u.id).scalar() or 0,
+        })
+        if len(out) >= 200:
+            break
+    return out
+
+
+class TrialEditIn(BaseModel):
+    # action: start(지금부터 새로 시작) / set(시작일·마지막 무료일 지정) / end(오늘로 끝냄) / clear(무료 대상에서 뺌)
+    action: str = Field(pattern="^(start|set|end|clear)$")
+    start_date: Optional[date] = None
+    last_day: Optional[date] = None      # 이날까지 무료(한국 날짜)
+
+
+@app.put("/api/admin/trial/users/{user_id}")
+def admin_edit_trial(user_id: int, payload: TrialEditIn, request: Request,
+                     db: Session = Depends(get_db), user: User = Depends(require_admin)):
+    u = db.get(User, user_id)
+    if u is None or u.role != Role.student:
+        raise HTTPException(status_code=404, detail="학생 계정을 찾을 수 없습니다.")
+    before = f"{u.free_trial_start_at}~{u.free_trial_end_at}"
+    now = datetime.utcnow()
+    if payload.action == "start":
+        u.free_trial_start_at = None
+        u.free_trial_end_at = None
+        u.free_trial_start_at = now
+        u.free_trial_end_at = kst_midnight_utc(add_months(kst_date(now), trial_months(db)))
+    elif payload.action == "set":
+        if not payload.start_date or not payload.last_day:
+            raise HTTPException(status_code=400, detail="시작일과 마지막 무료일을 넣어 주세요.")
+        if payload.last_day < payload.start_date:
+            raise HTTPException(status_code=400, detail="마지막 무료일이 시작일보다 앞섭니다.")
+        u.free_trial_start_at = kst_midnight_utc(payload.start_date)
+        u.free_trial_end_at = kst_midnight_utc(payload.last_day + timedelta(days=1))
+    elif payload.action == "end":
+        if not u.free_trial_start_at:
+            raise HTTPException(status_code=400, detail="무료 이용 기록이 없는 학생입니다.")
+        u.free_trial_end_at = min(u.free_trial_end_at or now, now)
+    else:
+        u.free_trial_start_at = None
+        u.free_trial_end_at = None
+    db.commit()
+    write_audit(db, request, user, action=f"trial.{payload.action}", target_type="user",
+                target_id=u.id, detail=f"{before} → {u.free_trial_start_at}~{u.free_trial_end_at}")
+    return trial_status(db, u)
 
 
 # ── 입금 내역 대조 ─────────────────────────────────────────
@@ -5419,6 +5959,8 @@ def admin_get_settings(db: Session = Depends(get_db), user: User = Depends(requi
         "effective": "toss" if use_toss(db) else "bank_transfer",
         "bank_accounts": bank_accounts(db),
         "deposit_auto_approve": "on" if auto_approve_enabled(db) else "off",
+        "free_trial_enabled": "on" if trial_enabled(db) else "off",
+        "free_trial_months": trial_months(db),
         # 미매칭함에 쌓인 건수. 설정 화면에서도 밀린 것을 알 수 있게 한다.
         "unmatched_open": db.query(func.count(UnmatchedDeposit.id))
                             .filter(UnmatchedDeposit.status == "open").scalar() or 0,
@@ -5430,7 +5972,18 @@ def admin_set_settings(payload: dict, request: Request, db: Session = Depends(ge
                        user: User = Depends(require_admin)):
     allowed = {"subscription_price", "bank_name", "bank_account", "bank_holder",
                "payment_note", "payment_method", "bank_accounts", "deposit_auto_approve",
-               "seat_price", "seat_discount_enabled", "seat_discount_tiers"}
+               "seat_price", "seat_discount_enabled", "seat_discount_tiers",
+               "free_trial_enabled", "free_trial_months"}
+    if "free_trial_enabled" in payload and payload["free_trial_enabled"] not in ("on", "off"):
+        raise HTTPException(status_code=400, detail="첫 달 무료는 on/off 로만 정할 수 있습니다.")
+    if "free_trial_months" in payload:
+        try:
+            n = int(payload["free_trial_months"])
+        except (TypeError, ValueError):
+            n = 0
+        if not 1 <= n <= 12:
+            raise HTTPException(status_code=400, detail="무료 기간은 1~12개월로 정해 주세요.")
+        payload["free_trial_months"] = str(n)
 
     method = payload.get("payment_method")
     if method is not None and method not in PAYMENT_METHODS:
@@ -5575,3 +6128,535 @@ def health(db: Session = Depends(get_db)):
         "toss_configured": toss.is_ready(),
         "bank_ready": bank_ready(db),
     }
+# ══════════════════════════════════════════════════════════
+# 개인 구매 · 학년 자동 계산
+# ══════════════════════════════════════════════════════════
+#
+# 이용권을 얻는 길은 두 가지다.
+#   1) 학교 구매 — 학교가 좌석을 사고, 선생님이 코드를 나눠 준다(SeatHolder).
+#   2) 개인 구매 — 학생이 직접 결제한다. 결제가 확정되는 순간 계정에 이용권
+#      (Subscription)이 붙는다. 선생님·학교 승인·코드가 필요 없다.
+#
+# 개인 이용권은 예전 개인 구독 표를 그대로 쓴다. subscription_active() 가 이미
+# 이 표를 인정하므로, 자기소개서 기능 쪽은 고칠 것이 없다.
+#
+# 결제가 확정되기 전에는 절대 이용권을 붙이지 않는다.
+#   카드: 토스 승인 API 가 성공해야 붙는다(금액은 서버가 정한 값과 대조).
+#   무통장: 관리자가 입금을 확인하고 승인해야 붙는다.
+
+PERSONAL_PLAN_MONTHS = (1, 6, 12)
+
+
+def personal_plans(db: Session) -> List[dict]:
+    price = subscription_price(db)
+    return [{"months": m, "amount": price * m, "label": f"{m}개월"} for m in PERSONAL_PLAN_MONTHS]
+
+
+def personal_days(months: int) -> int:
+    return SEAT_DAYS_PER_YEAR if months >= 12 else 30 * max(1, months)
+
+
+def personal_active(db: Session, user: User) -> bool:
+    sub = db.query(Subscription).filter(Subscription.user_id == user.id).first()
+    return bool(sub and sub.expires_at > datetime.utcnow())
+
+
+def school_managed(db: Session, user: User) -> bool:
+    """학교가 관리하는 학생인가 — 학교 좌석(코드)을 받았거나, 재학생 인증이 끝난 학생."""
+    if db.query(SeatHolder.id).filter(SeatHolder.user_id == user.id).first():
+        return True
+    return bool(user.school_id and user.verified)
+
+
+def access_type(db: Session, user: User) -> str:
+    personal = personal_active(db, user)
+    school = False
+    if user.school_id:
+        seat = school_seat(db, user.school_id, "essay")
+        school = bool(seat and seat.expires_at > datetime.utcnow() and db.query(SeatHolder.id).filter(
+            SeatHolder.school_id == user.school_id, SeatHolder.user_id == user.id,
+            SeatHolder.product == "essay").first())
+    if personal and school:
+        return "both"
+    if not personal and not school and trial_active(user):
+        return "trial"
+    return "individual" if personal else ("school" if school else "none")
+
+
+# ── 첫 달 무료 ─────────────────────────────────────────────
+#
+# 흐름: 신규 가입 → 무료 시작(가입 시각) → 가입일 기준 1개월 동안 자기소개서까지
+# 이용 → 종료 7일 전부터 남은 날을 알린다 → 종료 후 유료 이용 안내 → 개인 이용권
+# 결제(또는 학교 코드)로 전환.
+#
+# **1개월 = 달력 기준.** 이 서비스는 학년도·이용권 기간을 한국 날짜로 끊는다.
+# 9월 27일 가입이면 10월 26일까지 무료, 10월 27일 0시(한국)부터 유료다.
+# 1월 31일처럼 다음 달에 같은 날이 없으면 그 달 말일 다음 날에 끝난다(2월 28일까지 무료).
+#
+# 상태는 저장하지 않고 계산한다: trial(무료 중) / trial_ended(무료 끝, 이용권 없음)
+# / paid(개인 이용권) / school(학교 이용권) / none(무료 대상 아님·이용권 없음).
+
+TRIAL_DEFAULT_MONTHS = 1
+TRIAL_NOTICE_DAYS = 7          # 남은 날이 이만큼 이하면 화면에 알린다
+KST_OFFSET = timedelta(hours=9)
+
+
+def trial_enabled(db: Session) -> bool:
+    row = db.query(Setting).filter(Setting.key == "free_trial_enabled").first()
+    return (row.value if row else "on") != "off"
+
+
+def trial_months(db: Session) -> int:
+    row = db.query(Setting).filter(Setting.key == "free_trial_months").first()
+    try:
+        n = int(row.value) if row else TRIAL_DEFAULT_MONTHS
+    except (TypeError, ValueError):
+        n = TRIAL_DEFAULT_MONTHS
+    return max(1, min(12, n))
+
+
+def add_months(d: date, months: int) -> date:
+    """달력 기준 n개월 뒤 같은 날. 그 달에 같은 날이 없으면 말일 **다음 날**(3/1 등)."""
+    y, m = divmod(d.month - 1 + months, 12)
+    y, m = d.year + y, m + 1
+    import calendar
+    last = calendar.monthrange(y, m)[1]
+    if d.day <= last:
+        return date(y, m, d.day)
+    return date(y, m, last) + timedelta(days=1)
+
+
+def kst_midnight_utc(d: date) -> datetime:
+    """한국 날짜 d 의 0시를 UTC(저장 기준)로."""
+    return datetime(d.year, d.month, d.day) - KST_OFFSET
+
+
+def kst_date(dt: datetime) -> date:
+    return (dt + KST_OFFSET).date()
+
+
+def start_free_trial(db: Session, user: User, at: Optional[datetime] = None) -> bool:
+    """무료 기간을 시작한다. 이미 한 번 받은 사람에게는 다시 주지 않는다."""
+    if user.free_trial_start_at is not None or not trial_enabled(db):
+        return False
+    at = at or datetime.utcnow()
+    user.free_trial_start_at = at
+    user.free_trial_end_at = kst_midnight_utc(add_months(kst_date(at), trial_months(db)))
+    return True
+
+
+def trial_active(user: User, now: Optional[datetime] = None) -> bool:
+    now = now or datetime.utcnow()
+    return bool(user.free_trial_start_at and user.free_trial_end_at
+                and user.free_trial_start_at <= now < user.free_trial_end_at)
+
+
+def first_paid_at(db: Session, user: User) -> Optional[datetime]:
+    """유료 전환 시각 = 무료 시작 뒤 처음 결제가 끝난 개인 이용권(테스트 결제 제외)."""
+    if not user.free_trial_start_at:
+        return None
+    return (db.query(func.min(SubscriptionOrder.paid_at))
+            .filter(SubscriptionOrder.user_id == user.id,
+                    SubscriptionOrder.paid_at.isnot(None),
+                    SubscriptionOrder.paid_at >= user.free_trial_start_at,
+                    or_(SubscriptionOrder.is_test.is_(None), SubscriptionOrder.is_test.is_(False)))
+            .scalar())
+
+
+def trial_state(db: Session, user: User, now: Optional[datetime] = None) -> str:
+    now = now or datetime.utcnow()
+    if personal_active(db, user):
+        return "paid"
+    seat = school_seat(db, user.school_id, "essay") if user.school_id else None
+    if seat and seat.expires_at > now and db.query(SeatHolder.id).filter(
+            SeatHolder.school_id == user.school_id, SeatHolder.user_id == user.id,
+            SeatHolder.product == "essay").first():
+        return "school"
+    if trial_active(user, now):
+        return "trial"
+    if user.free_trial_start_at:
+        return "trial_ended"
+    return "none"
+
+
+TRIAL_STATE_LABEL = {"trial": "무료 이용 중", "trial_ended": "무료 이용 종료",
+                     "paid": "유료(개인 이용권)", "school": "학교 이용권", "none": "무료 대상 아님"}
+
+
+def trial_status(db: Session, user: User) -> dict:
+    now = datetime.utcnow()
+    st = trial_state(db, user, now)
+    start, end = user.free_trial_start_at, user.free_trial_end_at
+    days_left = None
+    if start and end and now < end:
+        # 오늘(한국)을 포함해 남은 날. 마지막 날이면 1.
+        days_left = max(0, (kst_date(end) - kst_date(now)).days)
+    paid_at = first_paid_at(db, user)
+    return {
+        "eligible": bool(start),
+        "status": st,
+        "status_label": TRIAL_STATE_LABEL[st],
+        "active": trial_active(user, now),
+        "start_at": start,
+        "end_at": end,
+        # 화면에 적는 '무료 종료일'(이날까지 무료).
+        "last_day": (kst_date(end) - timedelta(days=1)).isoformat() if end else None,
+        "days_left": days_left,
+        "notice": bool(days_left is not None and days_left <= TRIAL_NOTICE_DAYS and st == "trial"),
+        "converted": paid_at is not None,
+        "converted_at": paid_at,
+        "enabled": trial_enabled(db),
+    }
+
+
+@app.get("/api/subscription/trial-status")
+def my_trial_status(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    return trial_status(db, user)
+
+
+def current_school_year() -> int:
+    return school_year_of(date.today())
+
+
+MAX_GRADE = 3
+
+
+def computed_grade(user: User, year: Optional[int] = None) -> Optional[int]:
+    """기준 학년 + (올해 학년도 - 기준 학년도). 3학년을 넘으면 3학년으로 둔다."""
+    if not user.grade_base or not user.grade_base_year:
+        return None
+    g = user.grade_base + ((year or current_school_year()) - user.grade_base_year)
+    return max(1, min(MAX_GRADE, g))
+
+
+def refresh_auto_grade(db: Session, user: User) -> None:
+    """개인 학생의 학년을 기준값에서 다시 계산해 둔다. 몇 번 불러도 결과가 같다."""
+    if user.role != Role.student or not user.grade_base_year:
+        return
+    g = computed_grade(user)
+    if g and g != user.grade:
+        user.grade = g
+        db.commit()
+
+
+def start_auto_grade(user: User, grade: Optional[int] = None) -> None:
+    """지금 학년을 기준으로 삼아 자동 계산을 시작한다."""
+    g = grade if grade is not None else user.grade
+    if not g:
+        return
+    user.grade = g
+    user.grade_base = g
+    user.grade_base_year = current_school_year()
+
+
+class GradeIn(BaseModel):
+    grade: int = Field(ge=1, le=3)
+    school_level: str = Field(default="high", pattern="^(high|middle)$")
+
+
+@app.put("/api/me/grade")
+def set_my_grade(payload: GradeIn, request: Request, db: Session = Depends(get_db),
+                 user: User = Depends(require_student)):
+    """개인 학생이 자기 학년을 정한다. 다음 학년도부터는 저절로 올라간다.
+
+    학교 소속 학생은 막는다 — 학년·반은 선생님이 코드로 정하고, 학생이 바꾸면
+    담당 선생님과 이어지지 않는다(PATCH /api/me 와 같은 이유).
+    """
+    if school_managed(db, user):
+        raise HTTPException(status_code=403,
+                            detail="학교에서 관리하는 학년입니다. 담당 선생님께 문의해주세요.")
+    start_auto_grade(user, payload.grade)
+    user.school_level = payload.school_level
+    db.commit()
+    write_audit(db, request, user, action="me.grade_set", target_type="user",
+                target_id=user.id, detail=f"{payload.grade}학년 ({current_school_year()}학년도 기준)")
+    return user_out(user)
+
+
+def personal_order_out(db: Session, o: SubscriptionOrder) -> dict:
+    refunded = bool(o.refunded_at)
+    status = "refunded" if refunded else o.status.value
+    return {
+        "id": o.id, "months": o.months, "amount": o.amount,
+        "status": status,
+        "status_label": "환불" if refunded else {
+            "pending": "결제 대기", "paid": "입금 확인", "approved": "결제 완료",
+            "rejected": "취소·실패", "expired": "기간 만료"}.get(o.status.value, ""),
+        "method": o.pay_method or "",
+        "order_uid": o.order_uid or "",
+        "deposit_code": o.deposit_code or "", "depositor_name": o.depositor_name or "",
+        "bank": (find_bank(db, o.bank_key) or bank_info(db)) if o.pay_method == "bank" else None,
+        "payment_note": bank_info(db).get("payment_note", "") if o.pay_method == "bank" else "",
+        "receipt_url": o.receipt_url or "",
+        "created_at": o.created_at, "due_at": o.due_at, "paid_at": o.paid_at,
+        "refunded_at": o.refunded_at, "refund_amount": o.refund_amount or 0,
+        "note": o.note or "",
+        "can_cancel": o.status == OrderStatus.pending,
+    }
+
+
+def grant_personal(db: Session, o: SubscriptionOrder) -> Subscription:
+    """확정된 주문의 기간만큼 개인 이용권을 늘린다(남은 기간 뒤에 이어 붙인다)."""
+    now = datetime.utcnow()
+    sub = db.query(Subscription).filter(Subscription.user_id == o.user_id).first()
+    days = personal_days(o.months)
+    if sub is None:
+        sub = Subscription(user_id=o.user_id, started_at=now, expires_at=now + timedelta(days=days))
+        db.add(sub)
+    else:
+        base = sub.expires_at if sub.expires_at > now else now
+        sub.expires_at = base + timedelta(days=days)
+    o.status = OrderStatus.approved
+    o.paid_at = o.paid_at or now
+    o.handled_at = now
+    # 개인 학생은 학년을 스스로 관리한다. 학년을 알고 있으면 여기서 자동 계산을 시작한다.
+    u = db.get(User, o.user_id)
+    if u and not u.grade_base_year and not school_managed(db, u):
+        start_auto_grade(u)
+    return sub
+
+
+class PersonalOrderIn(BaseModel):
+    months: int
+    method: str = Field(pattern="^(card|bank)$")
+    depositor_name: str = Field(default="", max_length=40)
+    # 미성년자 결제 보호(민법 제5조): 보호자 동의와 연락처
+    minor_consent: bool = False
+    guardian_contact: str = Field(default="", max_length=120)
+
+
+@app.post("/api/personal/orders")
+def create_personal_order(payload: PersonalOrderIn, request: Request,
+                          db: Session = Depends(get_db), user: User = Depends(require_student)):
+    """개인 이용권 주문을 만든다. 금액은 서버가 정한다(화면이 보낸 금액은 믿지 않는다)."""
+    if payload.months not in PERSONAL_PLAN_MONTHS:
+        raise HTTPException(status_code=400, detail="이용 기간을 다시 골라주세요.")
+    if not payload.minor_consent or not payload.guardian_contact.strip():
+        raise HTTPException(status_code=400,
+                            detail="보호자(법정대리인) 동의와 보호자 연락처가 필요합니다.")
+    if payload.method == "card" and not use_toss(db):
+        raise HTTPException(status_code=400, detail="지금은 카드 결제를 받지 않습니다. 계좌 입금을 골라주세요.")
+    if payload.method == "bank" and not bank_ready(db):
+        raise HTTPException(status_code=400, detail="지금은 계좌 입금을 받지 않습니다.")
+
+    now = datetime.utcnow()
+    if payload.method == "bank":
+        # 입금 대기 주문이 여러 건 쌓이면 대조가 꼬인다. 있으면 그것을 다시 보여준다.
+        exists = (db.query(SubscriptionOrder)
+                  .filter(SubscriptionOrder.user_id == user.id,
+                          SubscriptionOrder.pay_method == "bank",
+                          SubscriptionOrder.status == OrderStatus.pending).first())
+        if exists:
+            out = personal_order_out(db, exists)
+            out["reused"] = True
+            return out
+
+    o = SubscriptionOrder(
+        user_id=user.id, user_email=user.email or "", months=payload.months,
+        amount=subscription_price(db) * payload.months, status=OrderStatus.pending,
+        pay_method=payload.method,
+        order_uid=f"DIARY-{secrets.token_hex(8)}",
+        minor_consent=True, guardian_contact=payload.guardian_contact.strip()[:120],
+        created_at=now,
+    )
+    if payload.method == "bank":
+        o.deposit_code = make_deposit_code(db)
+        o.depositor_name = payload.depositor_name.strip()[:40] or (user.name or "")[:40]
+        o.bank_key = assign_bank(db)
+        o.due_at = now + timedelta(days=SUBSCRIPTION_DUE_DAYS)
+    db.add(o)
+    db.commit()
+    db.refresh(o)
+    write_audit(db, request, user, action="personal.order_create", target_type="subscription_order",
+                target_id=o.id, detail=f"{o.months}개월 {o.amount}원 {o.pay_method}")
+    out = personal_order_out(db, o)
+    if payload.method == "card":
+        out["toss"] = {"client_key": toss.client_key(), "order_id": o.order_uid,
+                       "amount": o.amount, "order_name": f"기록해 자기소개서 이용권 {o.months}개월",
+                       "customer_name": user.name or "", "customer_email": user.email or ""}
+    return out
+
+
+class CardConfirmIn(BaseModel):
+    payment_key: str = Field(min_length=1, max_length=200)
+    order_id: str = Field(min_length=1, max_length=64)
+    amount: int
+
+
+@app.post("/api/personal/orders/confirm")
+def confirm_personal_card(payload: CardConfirmIn, request: Request,
+                          db: Session = Depends(get_db), user: User = Depends(require_student)):
+    """카드 결제창이 끝난 뒤 부른다. 토스 승인이 성공해야 이용권이 붙는다."""
+    o = (db.query(SubscriptionOrder)
+         .filter(SubscriptionOrder.order_uid == payload.order_id,
+                 SubscriptionOrder.user_id == user.id).first())
+    if not o:
+        raise HTTPException(status_code=404, detail="주문을 찾을 수 없습니다.")
+    if o.status == OrderStatus.approved:
+        # 새로고침으로 두 번 들어와도 한 번만 붙인다.
+        return {"ok": True, "already": True, "order": personal_order_out(db, o),
+                "subscription": my_subscription(db, user)}
+    if o.status != OrderStatus.pending or o.pay_method != "card":
+        raise HTTPException(status_code=400, detail="확정할 수 없는 주문입니다.")
+    # 금액을 조작해 싸게 결제하는 것을 막는다 — 서버에 저장한 금액과 대조한다.
+    if int(payload.amount) != int(o.amount):
+        o.status = OrderStatus.rejected
+        o.note = "결제 금액 불일치"
+        o.handled_at = datetime.utcnow()
+        db.commit()
+        raise HTTPException(status_code=400, detail="결제 금액이 주문과 다릅니다.")
+
+    ok, data, err = toss.confirm(payload.payment_key, o.order_uid, o.amount)
+    if not ok:
+        o.status = OrderStatus.rejected
+        o.note = (err or "결제 승인 실패")[:200]
+        o.handled_at = datetime.utcnow()
+        db.commit()
+        write_audit(db, request, user, action="personal.card_fail",
+                    target_type="subscription_order", target_id=o.id, detail=o.note)
+        raise HTTPException(status_code=400, detail=f"결제를 확정하지 못했습니다. {err}")
+
+    o.payment_key = payload.payment_key
+    o.receipt_url = ((data.get("receipt") or {}).get("url") or "")[:300]
+    o.is_test = toss.is_test_mode()
+    grant_personal(db, o)
+    db.commit()
+    write_audit(db, request, user, action="personal.card_paid", target_type="subscription_order",
+                target_id=o.id, detail=f"{o.months}개월 {o.amount}원")
+    return {"ok": True, "already": False, "order": personal_order_out(db, o),
+            "subscription": my_subscription(db, user)}
+
+
+@app.post("/api/personal/orders/{order_id}/fail")
+def fail_personal_card(order_id: str, db: Session = Depends(get_db),
+                       user: User = Depends(require_student)):
+    """카드 결제창에서 취소·실패하고 돌아왔을 때. 주문을 닫아 둔다."""
+    o = (db.query(SubscriptionOrder)
+         .filter(SubscriptionOrder.order_uid == order_id,
+                 SubscriptionOrder.user_id == user.id).first())
+    if o and o.status == OrderStatus.pending and o.pay_method == "card":
+        o.status = OrderStatus.rejected
+        o.note = "결제창에서 취소·실패"
+        o.handled_at = datetime.utcnow()
+        db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/personal/orders")
+def my_personal_orders(db: Session = Depends(get_db), user: User = Depends(require_student)):
+    rows = (db.query(SubscriptionOrder).filter(SubscriptionOrder.user_id == user.id)
+            .order_by(SubscriptionOrder.created_at.desc()).limit(50).all())
+    return [personal_order_out(db, o) for o in rows]
+
+
+@app.post("/api/personal/orders/{order_id}/cancel")
+def cancel_personal_order(order_id: int, request: Request, db: Session = Depends(get_db),
+                          user: User = Depends(require_student)):
+    o = db.get(SubscriptionOrder, order_id)
+    if not o or o.user_id != user.id:
+        raise HTTPException(status_code=404, detail="주문을 찾을 수 없습니다.")
+    if o.status != OrderStatus.pending:
+        raise HTTPException(status_code=400, detail="결제 대기 상태만 취소할 수 있습니다.")
+    o.status = OrderStatus.rejected
+    o.note = "학생 취소"
+    o.handled_at = datetime.utcnow()
+    db.commit()
+    write_audit(db, request, user, action="personal.order_cancel", target_type="subscription_order",
+                target_id=o.id)
+    return {"ok": True, "message": "주문을 취소했습니다."}
+
+
+# ── 관리자: 개인 주문 ──────────────────────────────────────
+
+
+@app.get("/api/admin/personal-orders")
+def admin_personal_orders(status: str = "", db: Session = Depends(get_db),
+                          user: User = Depends(require_admin)):
+    q = db.query(SubscriptionOrder).filter(SubscriptionOrder.order_uid.like("DIARY-%"))
+    if status == "refunded":
+        q = q.filter(SubscriptionOrder.refunded_at.isnot(None))
+    elif status in ("pending", "paid", "approved", "rejected"):
+        q = q.filter(SubscriptionOrder.status == OrderStatus(status))
+    rows = q.order_by(SubscriptionOrder.created_at.desc()).limit(300).all()
+    out = []
+    for o in rows:
+        u = db.get(User, o.user_id) if o.user_id else None
+        out.append({**personal_order_out(db, o), "user_email": o.user_email or "",
+                    "user_name": u.name if u else "", "guardian_contact": o.guardian_contact or ""})
+    return out
+
+
+@app.post("/api/admin/personal-orders/{order_id}/approve")
+def admin_approve_personal(order_id: int, request: Request, db: Session = Depends(get_db),
+                           user: User = Depends(require_admin)):
+    """무통장 입금을 확인하고 이용권을 붙인다."""
+    o = db.get(SubscriptionOrder, order_id)
+    if not o or not (o.order_uid or "").startswith("DIARY-"):
+        raise HTTPException(status_code=404, detail="주문을 찾을 수 없습니다.")
+    if o.status not in (OrderStatus.pending, OrderStatus.paid):
+        raise HTTPException(status_code=400, detail="승인할 수 없는 상태입니다.")
+    if not o.user_id or not db.get(User, o.user_id):
+        raise HTTPException(status_code=400, detail="주문한 계정을 찾을 수 없습니다.")
+    sub = grant_personal(db, o)
+    db.commit()
+    write_audit(db, request, user, action="personal.order_approve",
+                target_type="subscription_order", target_id=o.id,
+                detail=f"{o.user_email} {o.months}개월 {o.amount}원")
+    return {"ok": True, "expires_at": sub.expires_at, "message": "입금을 확인하고 이용권을 붙였습니다."}
+
+
+@app.post("/api/admin/personal-orders/{order_id}/reject")
+def admin_reject_personal(order_id: int, payload: dict, request: Request,
+                          db: Session = Depends(get_db), user: User = Depends(require_admin)):
+    o = db.get(SubscriptionOrder, order_id)
+    if not o or not (o.order_uid or "").startswith("DIARY-"):
+        raise HTTPException(status_code=404, detail="주문을 찾을 수 없습니다.")
+    if o.status == OrderStatus.approved:
+        raise HTTPException(status_code=400, detail="결제가 끝난 주문은 환불로 처리해주세요.")
+    o.status = OrderStatus.rejected
+    o.note = str(payload.get("note") or "관리자 반려")[:200]
+    o.handled_at = datetime.utcnow()
+    db.commit()
+    write_audit(db, request, user, action="personal.order_reject",
+                target_type="subscription_order", target_id=o.id, detail=o.note)
+    return {"ok": True, "message": "주문을 반려했습니다."}
+
+
+@app.post("/api/admin/personal-orders/{order_id}/refund")
+def admin_refund_personal(order_id: int, payload: dict, request: Request,
+                          db: Session = Depends(get_db), user: User = Depends(require_admin)):
+    """환불. 카드는 토스에 취소를 넣고, 계좌 입금은 송금은 사람이 하고 기록만 남긴다.
+    환불한 주문의 기간만큼 이용권을 줄인다(다른 주문으로 산 기간은 남는다)."""
+    o = db.get(SubscriptionOrder, order_id)
+    if not o or not (o.order_uid or "").startswith("DIARY-"):
+        raise HTTPException(status_code=404, detail="주문을 찾을 수 없습니다.")
+    if o.status != OrderStatus.approved or o.refunded_at:
+        raise HTTPException(status_code=400, detail="결제가 끝난 주문만 환불할 수 있습니다.")
+    try:
+        amount = int(payload.get("amount") or o.amount)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="환불 금액을 숫자로 적어주세요.")
+    if amount < 1 or amount > o.amount:
+        raise HTTPException(status_code=400, detail="환불 금액이 올바르지 않습니다.")
+    reason = str(payload.get("reason") or "고객 요청")[:200]
+    if o.pay_method == "card" and o.payment_key:
+        ok, _data, err = toss.cancel(o.payment_key, reason, amount if amount < o.amount else None)
+        if not ok:
+            raise HTTPException(status_code=502, detail=f"카드 취소에 실패했습니다. {err}")
+    now = datetime.utcnow()
+    o.refunded_at = now
+    o.refund_amount = amount
+    o.refund_reason = reason
+    o.status = OrderStatus.rejected
+    o.handled_at = now
+    sub = db.query(Subscription).filter(Subscription.user_id == o.user_id).first()
+    if sub:
+        sub.expires_at = max(now, sub.expires_at - timedelta(days=personal_days(o.months)))
+    db.commit()
+    write_audit(db, request, user, action="personal.order_refund",
+                target_type="subscription_order", target_id=o.id, detail=f"{amount}원 {reason}")
+    return {"ok": True, "message": f"{amount:,}원 환불을 기록했고 이용권 기간을 줄였습니다."}
+
+# 기록해 공지사항 · 학교 계정 공지 알림 메일 (UDJ 공지와 별개)
+from . import notices as _notices  # noqa: E402
+app.include_router(_notices.router)

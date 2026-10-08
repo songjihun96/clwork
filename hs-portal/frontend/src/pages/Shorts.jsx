@@ -186,6 +186,8 @@ export default function Shorts() {
           key={current.id}
           src={current.file_url}
           autoPlay
+          controlsList="nodownload"
+          onContextMenu={(e) => e.preventDefault()}
           muted={muted}
           playsInline
           loop

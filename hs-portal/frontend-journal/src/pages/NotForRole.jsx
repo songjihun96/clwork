@@ -19,7 +19,7 @@ export default function NotForRole() {
       <h1>{label} 계정은 이 서비스를 이용하지 않습니다</h1>
 
       <p style={{ color: "var(--steel)", lineHeight: 1.85, marginTop: 0 }}>
-        기록해는 <b>학생이 일지·일기를 쓰고</b>, <b>선생님이 제출된 기록을 확인</b>하는
+        기록해는 <b>학생이 학교생활일지·수업일지를 쓰고</b>, <b>선생님이 제출된 기록을 확인</b>하는
         서비스입니다. 학교 정보 관리와 포털 운영은 본 사이트에서 하실 수 있습니다.
       </p>
 

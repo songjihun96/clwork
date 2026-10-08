@@ -13,7 +13,9 @@ import { useState } from "react";
  *  강의번호가 -1 이다. 설명회는 첫 인자만 쓰고 나머지는 무시한다 —
  *  합격생 영상은 티켓이 만료되면 "몇 번째 것을 보고 있었는지"로 다시
  *  받아와야 해서 번호가 필요하다. */
-export default function Curriculum({ chapters, onPlay }) {
+/** onLocked 를 주면, 회원만 볼 수 있어 잠긴 강의(locked)도 누를 수 있게
+ *  두고 누르면 그걸 부른다(설명회: 로그인 화면으로 보낸다). */
+export default function Curriculum({ chapters, onPlay, onLocked }) {
   const [open, setOpen] = useState(() => new Set());
   const allOpen = open.size === chapters.length && chapters.length > 0;
 
@@ -93,11 +95,13 @@ export default function Curriculum({ chapters, onPlay }) {
               {isOpen && (
                 <div style={{ padding: "0 18px 16px" }}>
                   {items.length === 0 ? (
-                    <LessonRow label={ch.title}
-                      onClick={ch.source ? () => onPlay(ch.source, i, -1) : null} />
+                    <LessonRow label={ch.title} locked={!ch.source && ch.locked && !!onLocked}
+                      onClick={ch.source ? () => onPlay(ch.source, i, -1)
+                        : (ch.locked && onLocked) || null} />
                   ) : items.map((it, j) => (
-                    <LessonRow key={j} label={it.title}
-                      onClick={it.source ? () => onPlay(it.source, i, j) : null} />
+                    <LessonRow key={j} label={it.title} locked={!it.source && it.locked && !!onLocked}
+                      onClick={it.source ? () => onPlay(it.source, i, j)
+                        : (it.locked && onLocked) || null} />
                   ))}
                 </div>
               )}
@@ -109,10 +113,11 @@ export default function Curriculum({ chapters, onPlay }) {
   );
 }
 
-function LessonRow({ label, onClick }) {
+function LessonRow({ label, onClick, locked }) {
   const inner = (
     <>
-      <span style={{ color: "var(--steel-light)", fontSize: 13 }}>▶</span>
+      <span style={{ color: "var(--steel-light)", fontSize: 13 }}
+        title={locked ? "회원만 볼 수 있어요" : undefined}>{locked ? "🔒" : "▶"}</span>
       <span style={{ flex: 1, minWidth: 0 }}>{label}</span>
     </>
   );

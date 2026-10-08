@@ -218,6 +218,8 @@ class WorkLedgerEntry(Base):
     day = Column(Date, nullable=True)                          # 실제 발생일(참고)
     site = Column(String(40), nullable=False, default="기타")
     kind = Column(String(8), nullable=False, default="sale")   # sale / refund
+    # 결제 유형(settlement.PAYMENT_TYPES). 예전 줄은 기타로 본다.
+    payment_type = Column(String(12), nullable=False, default="other")
     amount = Column(Integer, nullable=False, default=0)        # 원, 양수
     memo = Column(String(200), default="")
     created_by = Column(Integer, ForeignKey("work_users.id"), nullable=True)

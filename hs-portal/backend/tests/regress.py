@@ -182,9 +182,24 @@ chk("확장자 아닌 파일은 거부", c.post("/api/school-admin/hero-image",
 r = c.put("/api/school-admin/profile", json={"hero_image": hero_url}, headers=CH)
 chk("업로드한 URL로 프로필 저장 가능(상대경로 허용)", r.status_code == 200, str(r.json())[:120])
 
-print("=== 선생님 ===")
-chk("학급 목록", c.get("/api/teacher/class-options", headers=TH).status_code==200)
-chk("학생은 못 씀", c.get("/api/teacher/class-options", headers=SH).status_code==403)
+print("=== 선생님 (UDJ에서 없앰 — 기록해 몫) ===")
+for path in ("/api/teacher/me", "/api/teacher/class-options", "/api/teacher/students",
+             "/api/teacher/verifications"):
+    chk(f"{path} 없음", c.get(path, headers=TH).status_code == 404)
+
+print("=== 플랜 기능 표기 — 실제 동작과 같아야 한다 ===")
+plans = c.get("/api/meta").json()["plans"]
+base = plans[0]["base_features"]
+chk("기본 기능에 통계 포함(모든 플랜에 열려 있음)", "조회수·즐겨찾기 통계" in base, str(base))
+chk("기본 기능에 선생님 계정 발급 없음", "선생님 계정 발급" not in base, str(base))
+every_perk = {x for p in plans for x in p["perks"]}
+for gone in ("조회수 통계", "일자별 상세 통계", "즐겨찾기 전환 분석"):
+    chk(f"유료 혜택에 '{gone}' 없음", gone not in every_perk, str(every_perk))
+from app.main import school_has_perk  # noqa: E402
+db = SessionLocal()
+chk("기록해용 선생님 발급 권한은 그대로(숨은 기본 기능)",
+    school_has_perk(db, db.get(School, SID), "teacher_accounts"))
+db.close()
 
 print("=== 계정 검색 — 다른 학교 학생은 안 보여야 한다 ===")
 db=SessionLocal()
@@ -197,8 +212,6 @@ other_tea=User(email="etc-tea-uniq@t.kr",password_hash=hash_password("p1234567")
           name="저쪽학교유일교사",role=Role.teacher,school_id=SID2)
 db.add(other); db.add(other_tea); db.commit()
 db.close()
-r=c.get("/api/teacher/students/search", params={"q":"다른학교유일이름"}, headers=TH).json()
-chk("선생님 검색 — 다른 학교 학생 안 나옴", all(u["name"]!="다른학교유일이름" for u in r), str(r))
 # 선생님 계정 검색·부여는 기록해 화면으로 옮겼다 — 기록해 서버가 이 partner
 # API(X-Partner-Secret 인증, 학교 JWT 아님)를 통해 대신 부른다.
 PH={"X-Partner-Secret":"test-partner-secret"}

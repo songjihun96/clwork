@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -47,11 +47,14 @@ function useAutoGrow(value) {
   return ref;
 }
 
-function Field({ label, value, onChange }) {
+function Field({ label, value, onChange, legacy }) {
   const ref = useAutoGrow(value);
   return (
     <div className="journal-section field">
-      <span className="label">{label}</span>
+      <span className="label">
+        {label}
+        {legacy && <span className="legacy-tag">이전 양식</span>}
+      </span>
       <textarea ref={ref} className="textarea" value={value}
         placeholder="여기에 적어보세요" onChange={onChange} />
     </div>
@@ -64,6 +67,7 @@ export default function JournalEdit() {
   // 바꾸게 하면 다 쓴 글의 항목이 통째로 갈리는 사고가 난다.
   const [search] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const isNew = !id;
 
   const [meta, setMeta] = useState(null);
@@ -81,6 +85,11 @@ export default function JournalEdit() {
   const [spell, setSpell] = useState(null);         // 맞춤법 지적
   const [checking, setChecking] = useState(false);
   const [manualSubject, setManualSubject] = useState(false);  // 목록에 없는 과목 직접 입력
+  // 나중에 자기소개서의 어느 항목에 쓰면 좋을지. 여러 개 고를 수 있다.
+  const [resumeTags, setResumeTags] = useState([]);
+  // 두 번 빠르게 누르면 busy 상태가 바뀌기 전에 두 번째가 들어와 일지가 두 개 생긴다.
+  // 그림이 다시 그려지기를 기다리지 않는 ref 로 막는다.
+  const saving = useRef(false);
 
   useEffect(() => {
     api.journalMeta().then(setMeta).catch(() => {});
@@ -103,6 +112,7 @@ export default function JournalEdit() {
           content: d.content || {},
         });
         setSentAt(d.sent_at || null);
+        setResumeTags(d.resume_tags || []);
         setShareToken(d.share_token || "");
         setFeedback(
           d.feedback
@@ -136,11 +146,21 @@ export default function JournalEdit() {
     }
   };
 
+  const kindMeta = useMemo(
+    () => (meta ? meta.kinds.find((k) => k.kind === form.kind) : null) || null,
+    [meta, form.kind]);
   const fields = useMemo(() => {
-    if (!meta) return [];
-    const found = meta.kinds.find((k) => k.kind === form.kind);
-    return found ? found.fields : [];
-  }, [meta, form.kind]);
+    if (!kindMeta) return [];
+    // 예전 양식에만 있던 칸은 그 칸에 글이 있을 때만 보여 준다. 양식이 바뀌었다고
+    // 이미 쓴 글이 화면에서 사라지면 안 된다.
+    const legacy = (kindMeta.legacy_fields || [])
+      .filter((f) => (form.content[f.key] || "").trim())
+      .map((f) => ({ ...f, legacy: true, section: "legacy" }));
+    return [...kindMeta.fields, ...legacy];
+  }, [kindMeta, form.content]);
+
+  const toggleTag = (key) =>
+    setResumeTags((tags) => (tags.includes(key) ? tags.filter((t) => t !== key) : [...tags, key]));
 
   const setContent = (key) => (e) =>
     setForm((f) => ({ ...f, content: { ...f.content, [key]: e.target.value } }));
@@ -178,25 +198,30 @@ export default function JournalEdit() {
     }
   };
 
+  // 저장. 누르는 동안은 단추를 잠가 두 번 저장되지 않게 하고, 끝나면 완료 창을 띄운다.
+  // 실패하면 쓴 내용은 그대로 두고 까닭만 알린다.
   const save = async () => {
+    if (saving.current) return;
     if (!form.title.trim()) {
       setMsg({ type: "error", text: "제목을 적어주세요." });
       return;
     }
+    saving.current = true;
     setBusy(true);
     setMsg(null);
     try {
-      const body = { ...form, resume_tags: [] };
-      if (isNew) {
-        const r = await api.createJournal(body);
-        navigate(`/journals/${r.id}`, { replace: true });
-      } else {
-        await api.updateJournal(id, body);
-      }
-      setMsg({ type: "ok", text: "저장했습니다." });
+      const body = { ...form, resume_tags: resumeTags };
+      // 저장하면 바로 홈(최근 기록)으로 간다. 완료 창은 홈에서 띄운다(2026-09-28 요청).
+      // 새 일지는 이 화면 기록을 남기지 않는다 — 뒤로 가기가 빈 새 일지로 돌아오지 않게.
+      const r = isNew ? await api.createJournal(body) : await api.updateJournal(id, body);
+      navigate("/", {
+        replace: isNew,
+        state: { saved: { count: (r?.resume_tags || resumeTags).length, id: isNew ? r.id : Number(id) } },
+      });
     } catch (e) {
-      setMsg({ type: "error", text: e.message });
+      setMsg({ type: "error", text: `저장하지 못했습니다. ${e.message}` });
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   };
@@ -240,11 +265,6 @@ export default function JournalEdit() {
         <div className="spacer" />
         {sentAt && <span className="badge badge-done">제출함</span>}
       </div>
-      <p className="meta" style={{ margin: "6px 0 0", lineHeight: 1.6 }}>
-        {isLesson
-          ? "제출하면 이 과목 선생님이 읽어 봅니다."
-          : "제출하면 담임 선생님이 읽어 봅니다."}
-      </p>
 
       {msg && <div className={`notice notice-${msg.type}`} style={{ marginTop: 12 }}>{msg.text}</div>}
 
@@ -332,18 +352,48 @@ export default function JournalEdit() {
             onChange={(e) => setForm({ ...form, title: e.target.value })} />
         </div>
 
-        {fields.map((f) => (
+        {fields.filter((f) => !f.section).map((f) => (
           <Field key={f.key} label={f.label}
             value={form.content[f.key] || ""} onChange={setContent(f.key)} />
         ))}
+
+        {/* 수업일지: "해결하지 못한 내용"과 "해결 했던 내용"을 소제목으로 묶는다. */}
+        {(kindMeta?.sections || []).map((s) => (
+          <section key={s.key} className="journal-group">
+            <h3 className="journal-group-title">[{s.title}]</h3>
+            {s.hint && <p className="journal-group-hint">{s.hint}</p>}
+            {fields.filter((f) => f.section === s.key).map((f) => (
+              <Field key={f.key} label={f.label}
+                value={form.content[f.key] || ""} onChange={setContent(f.key)} />
+            ))}
+          </section>
+        ))}
+
+        {fields.some((f) => f.legacy) && (
+          <section className="journal-group">
+            <h3 className="journal-group-title">예전 양식으로 쓴 내용</h3>
+            <p className="journal-group-hint">
+              수업일지 양식이 바뀌기 전에 쓴 칸입니다. 지우지 않고 그대로 보관합니다.
+            </p>
+            {fields.filter((f) => f.legacy).map((f) => (
+              <Field key={f.key} label={f.label} legacy
+                value={form.content[f.key] || ""} onChange={setContent(f.key)} />
+            ))}
+          </section>
+        )}
       </article>
+
+      <ResumeCategoryPicker
+        categories={meta.resume_categories || []}
+        selected={resumeTags}
+        onToggle={toggleTag} />
 
       <div className="journal-actions">
         <button className="btn" onClick={runSpellcheck} disabled={checking}>
           {checking ? "살펴보는 중…" : "맞춤법 살펴보기"}
         </button>
-        <button className="btn btn-primary" onClick={save} disabled={busy}>
-          {busy ? "적는 중…" : "저장"}
+        <button className="btn btn-primary" onClick={save} disabled={busy} aria-busy={busy}>
+          {busy ? <><span className="spinner" aria-hidden="true" /> 저장하는 중…</> : "저장"}
         </button>
         {!isNew && (
           <>
@@ -422,5 +472,37 @@ export default function JournalEdit() {
         </p>
       )}
     </div>
+  );
+}
+
+
+/** 자기소개서 항목 카테고리 선택.
+ *
+ * "이 기록이 나중에 자기소개서의 어느 항목에 쓰이면 좋을까"를 미리 달아 둔다.
+ * 여러 개 고를 수 있고, 안 골라도 저장된다. 자기소개서 화면의
+ * "이 항목에 쓸 만한 내 기록"은 여기서 고른 일지를 맨 위에 올린다. */
+function ResumeCategoryPicker({ categories, selected, onToggle }) {
+  if (!categories.length) return null;
+  return (
+    <section className="resume-cats" aria-labelledby="resume-cats-title">
+      <div className="row" style={{ alignItems: "baseline", gap: 8 }}>
+        <h2 id="resume-cats-title" className="resume-cats-title">자기소개서 항목 카테고리 선택</h2>
+        <span className="meta">{selected.length ? `${selected.length}개 선택` : "선택 안 함"}</span>
+      </div>
+      <p className="resume-cats-desc">
+        나중에 자기소개서를 작성할 때 오늘 작성한 내용이 어느 항목에서 사용되면 좋을지
+        선택하여 저장합니다. 여러 개를 고를 수 있습니다.
+      </p>
+      <div className="resume-cats-list">
+        {categories.map((c, i) => (
+          <label key={c.key} className={`resume-cat${selected.includes(c.key) ? " on" : ""}`}>
+            <input type="checkbox" checked={selected.includes(c.key)}
+              onChange={() => onToggle(c.key)} />
+            <span className="resume-cat-no">{i + 1}</span>
+            <span>{c.label}</span>
+          </label>
+        ))}
+      </div>
+    </section>
   );
 }

@@ -24,8 +24,6 @@ from .auth import (
     require_admin,
     require_school,
     require_student,
-    require_class_manager,
-    require_teacher,
     verify_password,
 )
 from . import quiz as quiz_logic
@@ -151,12 +149,35 @@ def _ensure_columns() -> None:
             "search_aliases": "VARCHAR(300) DEFAULT ''",
             "youtube_urls": "TEXT DEFAULT ''",
             "inquiry_notify_email": "VARCHAR(120) DEFAULT ''",
+            "major_employers": "TEXT DEFAULT ''",
+            # 2026-10 학교급(중·고)과 공지 알림 메일. 기존 학교는 모두 고등학교.
+            "school_level": "VARCHAR(10) NOT NULL DEFAULT 'high'",
+            "notice_email": "VARCHAR(120) DEFAULT ''",
+            "notice_email_enabled": "BOOLEAN NOT NULL DEFAULT TRUE" if is_pg else "BOOLEAN NOT NULL DEFAULT 1",
+        },
+        "school_account_requests": {
+            "school_level": "VARCHAR(10) NOT NULL DEFAULT 'high'",
+            "region": "VARCHAR(20) DEFAULT ''",
+            "notice_consent": "BOOLEAN NOT NULL DEFAULT FALSE" if is_pg else "BOOLEAN NOT NULL DEFAULT 0",
+        },
+        # 담당 선생님 공지 수신 동의. 예전 담당자는 비어 있다 → 발송 대상에서 빠진다.
+        "school_contacts": {
+            "consent_at": ts_type,
+            "consent_source": "VARCHAR(10) DEFAULT ''",
+        },
+        # 목록에 없는 학교를 직접 적은 인터뷰의 지역.
+        "school_interviews": {
+            "region": "VARCHAR(20) DEFAULT ''",
         },
         # 새 표는 create_all 이 만들어 주지만, 이미 만들어진 뒤에 늘린 칸은
         # 여기 적어야 한다.
         "video_transcripts": {
             "stage": "VARCHAR(16) DEFAULT ''",
             "started_at": ts_type,
+        },
+        # 설명회 특강 카드로 올릴 롱폼인지. 예전 영상은 아니다(기본 거짓).
+        "videos": {
+            "is_lecture": "BOOLEAN NOT NULL DEFAULT FALSE" if is_pg else "BOOLEAN NOT NULL DEFAULT 0",
         },
         "users": {
             "phone": "VARCHAR(30) DEFAULT ''",
@@ -185,10 +206,23 @@ def _ensure_columns() -> None:
         },
         "notices": {
             "image_url": "VARCHAR(300) DEFAULT ''",
+            # 2026-10 공지사항 개편. 예전 공지는 '게시된 게시판 공지'로 본다.
+            "kind": "VARCHAR(12) NOT NULL DEFAULT 'board'",
+            "category": "VARCHAR(12) NOT NULL DEFAULT 'notice'",
+            "status": "VARCHAR(10) NOT NULL DEFAULT 'published'",
+            "published_at": ts_type,
+            "target_level": "VARCHAR(10) NOT NULL DEFAULT 'all'",
+            "email_enabled": "BOOLEAN NOT NULL DEFAULT FALSE" if is_pg else "BOOLEAN NOT NULL DEFAULT 0",
+            "sms_enabled": "BOOLEAN NOT NULL DEFAULT FALSE" if is_pg else "BOOLEAN NOT NULL DEFAULT 0",
+            "updated_at": ts_type,
         },
         "school_verifications": {
             "class_name": "VARCHAR(40) DEFAULT ''",
             "teacher_id": "INTEGER",
+        },
+        # 토스 테스트 결제 표시. 매출 통계가 실제 결제와 가른다.
+        "subscription_orders": {
+            "is_test": bool_default,
         },
         # 산 사람에게 영상을 열어 주려면 신청이 계정에 묶여 있어야 한다.
         "service_applications": {
@@ -343,10 +377,11 @@ BANK_DEFAULTS = {
 # **메뉴만 감춘다.** 주소를 직접 치면 열린다 — 유료 서비스 신청처럼 그 안에
 # 이미 걸어 둔 길이 있을 수 있어서, 여기서 통째로 막으면 그 링크까지 죽는다.
 # 서버가 실제로 막아야 하는 것(숏츠 영상)은 그쪽에 따로 잠금이 있다.
-NAV_KEYS = ("search", "events", "special", "quiz")
+NAV_KEYS = ("search", "events", "special", "interviews", "quiz", "notices")
 NAV_LABEL = {
     "search": "학교 검색", "events": "학교 일정",
-    "special": "온라인 직업계고 설명회", "quiz": "진로 테스트",
+    "special": "온라인 직업계고 설명회", "interviews": "학교 인터뷰",
+    "quiz": "진로 테스트", "notices": "공지사항",
 }
 
 
@@ -487,7 +522,19 @@ def _load_plan_perk_keys(db: Session, plan: Plan) -> List[str]:
             items = json.loads(row.value)
             if isinstance(items, list):
                 # 카탈로그에 있는 키만 인정한다(옛 형식·삭제된 항목은 무시)
-                return [k for k in items if k in PERK_LABEL]
+                keys = [k for k in items if k in PERK_LABEL]
+                # 저장 당시 몰랐던 키는 플랜 기본값을 따른다. 안 그러면 혜택을
+                # 한 번이라도 저장한 운영 DB 에서는 새 혜택이 영영 꺼져 있다.
+                known_row = db.query(Setting).filter(
+                    Setting.key == f"plan_perks_known_{plan.value}").first()
+                try:
+                    known = set(json.loads(known_row.value)) if known_row else LEGACY_PERK_KEYS
+                except (ValueError, TypeError):
+                    known = LEGACY_PERK_KEYS
+                for k in PLAN_DEFAULT_PERKS.get(plan, []):
+                    if k not in known and k not in keys:
+                        keys.append(k)
+                return keys
         except (ValueError, TypeError):
             pass
     return list(PLAN_DEFAULT_PERKS.get(plan, []))
@@ -502,12 +549,16 @@ def get_plan_perks(db: Session, plan: Plan) -> List[str]:
 def set_plan_perk_keys(db: Session, plan: Plan, keys: List[str]) -> None:
     valid = [k for k in keys if k in PERK_LABEL]
     value = json.dumps(valid, ensure_ascii=False)
-    key = f"plan_perks_{plan.value}"
-    row = db.query(Setting).filter(Setting.key == key).first()
-    if row:
-        row.value = value
-    else:
-        db.add(Setting(key=key, value=value))
+    # 저장하는 순간 카탈로그 전체를 '본 것'으로 남긴다. 여기서 뺀 키는
+    # 관리자가 일부러 끈 것이다.
+    known = json.dumps([k for k, _ in PERK_CATALOG], ensure_ascii=False)
+    for key, val in ((f"plan_perks_{plan.value}", value),
+                     (f"plan_perks_known_{plan.value}", known)):
+        row = db.query(Setting).filter(Setting.key == key).first()
+        if row:
+            row.value = val
+        else:
+            db.add(Setting(key=key, value=val))
     db.commit()
 
 
@@ -558,7 +609,7 @@ from . import videos as _videos
 # HEAD 도 받는다. 예전 StaticFiles 는 받아 줬고, 재생기·프록시가 본편을
 # 받기 전에 HEAD 로 길이와 형식을 먼저 물어보는 경우가 있다.
 @app.api_route("/api/media/{name}", methods=["GET", "HEAD"])
-def serve_media(name: str, db: Session = Depends(get_db)):
+def serve_media(name: str, t: str = "", db: Session = Depends(get_db)):
     """영상 파일. 예전에는 StaticFiles 로 통째로 열어 뒀다.
 
     **파는 영상이 생기면서 그럴 수 없게 됐다.** 잠근 길(/api/graduate-video/
@@ -571,12 +622,14 @@ def serve_media(name: str, db: Session = Depends(get_db)):
     if not safe or safe != name:
         raise HTTPException(status_code=404, detail="없는 파일입니다.")
     try:
-        blocked = _paidvideo.protected_filenames(db)
+        # 파는 영상 + 회원만 보는 영상(설명회·학교 인터뷰).
+        blocked = _paidvideo.protected_filenames(db) | _membervideo.protected_filenames(db)
     except Exception:
         # 판단을 못 하면 내보내지 않는다. 무료 영상이 잠깐 안 나오는 쪽이
         # 파는 영상이 새어 나가는 쪽보다 낫다.
         raise HTTPException(status_code=503, detail="잠시 후 다시 시도해 주세요.")
-    if safe in blocked:
+    # 관리자 미리보기만 예외다(영상 관리 화면이 관리자 티켓을 붙여 준다).
+    if safe in blocked and _membervideo.admin_from_ticket(db, t) is None:
         raise HTTPException(status_code=403, detail="시청 권한이 필요한 영상입니다.")
     path = os.path.join(_videos.MEDIA_DIR, safe)
     if not os.path.isfile(path):
@@ -619,6 +672,30 @@ app.include_router(_cc.router)
 app.include_router(_cc.voice_router)
 # 통화 음성 중계. 워커 1개짜리 별도 프로세스(udt-audio)에서만 실제로 쓰인다.
 app.include_router(_cc.audio_router)
+
+# 학교 계정 발급 신청. 학교가 남기면 운영자가 전화로 확인한 뒤 승인한다.
+from . import school_requests as _school_requests
+app.include_router(_school_requests.router)
+
+# 공지사항 · 공지 알림(학교 계정 메일) · 우리동네직업계고 담당 선생님 공지
+from . import notices as _notices  # noqa: E402
+app.include_router(_notices.router)
+
+# 진학정보(플래티넘). 학교가 입력한 졸업생 진로 통계와 공개 페이지.
+from . import admission as _admission
+app.include_router(_admission.router)
+
+# 회원만 보는 영상(설명회·학교 인터뷰)의 잠긴 재생 길.
+from . import membervideo as _membervideo
+app.include_router(_membervideo.router)
+
+# 학교 홍보 인터뷰 영상관. 목록은 누구나, 재생은 회원만.
+from . import interviews as _interviews
+app.include_router(_interviews.router)
+
+# 사이트 방문자 수(오늘·누적). 화면 아래에 보여 준다.
+from . import visits as _visits
+app.include_router(_visits.router)
 
 # 서버·트래픽 감시. 바탕화면 위젯이 /api/monitor/snapshot 하나만 부른다.
 from . import monitor as _monitor
@@ -690,9 +767,16 @@ BASE_FEATURES = [
     ("hero_image", "대표 이미지 노출"),
     ("inquiry_mail", "문의 답변 메일 발송"),
     ("quick_inquiry", "빠른 문의 배지"),
-    ("teacher_accounts", "선생님 계정 발급"),
+    # 통계 탭(누적 조회수·즐겨찾기 수·노출 순서·최근 14일 조회수)은 모든 플랜에 열려 있다.
+    # 예전에는 '조회수 통계·일자별 상세 통계·즐겨찾기 전환 분석'을 유료 혜택으로 적었지만
+    # 실제로는 플랜을 따지지 않았고 전환 분석 화면은 없었다(2026-10 정리).
+    ("stats", "조회수·즐겨찾기 통계"),
 ]
-BASE_FEATURE_KEYS = {k for k, _ in BASE_FEATURES}
+# 화면 목록에는 안 보이지만 항상 켜져 있는 기본 기능.
+# teacher_accounts: 선생님 권한은 UDJ에서 없앴지만, 기록해가 partner API 로 선생님 권한을
+# 줄 때 이 키를 확인한다(partner.py). 끄면 기록해의 선생님 발급이 막히므로 남겨 둔다.
+HIDDEN_BASE_FEATURE_KEYS = {"teacher_accounts"}
+BASE_FEATURE_KEYS = {k for k, _ in BASE_FEATURES} | HIDDEN_BASE_FEATURE_KEYS
 
 # 플랜별로 켜고 끄는 '유료 혜택'. 관리자가 관리자 화면에서 조정한다.
 PERK_CATALOG = [
@@ -704,18 +788,27 @@ PERK_CATALOG = [
     ("briefing", "학교 설명회 일정 등록"),
     ("banner", "추천 학교 배너 노출"),
     ("article_priority", "메인 소식 우선 노출"),
-    ("stats_views", "조회수 통계"),
-    ("stats_daily", "일자별 상세 통계"),
-    ("stats_favorite", "즐겨찾기 전환 분석"),
+    ("admission_stats", "취업/진학 정보 분석·공개 페이지"),
 ]
 PERK_LABEL = dict(PERK_CATALOG)
 
-# 플랜별 기본으로 켜져 있는 유료 혜택
+# 혜택 설정을 저장하는 기능이 생길 때 카탈로그에 있던 키들. 이 뒤에 추가한
+# 키는, 관리자가 그 키를 **본 적 없이** 저장한 설정에서 빠져 있어도 '끈 것'이
+# 아니라 '몰랐던 것'이다. 그런 키는 플랜 기본값을 따른다(_load_plan_perk_keys).
+# 새 키를 늘릴 때 이 목록은 건드리지 않는다.
+LEGACY_PERK_KEYS = {
+    "search_upper", "search_pin", "search_top", "card_highlight", "events",
+    "briefing", "banner", "article_priority", "stats_views", "stats_daily",
+    "stats_favorite",
+}
+
+# 플랜별 기본으로 켜져 있는 유료 혜택. 운영 설정(2026-10 관리자 화면 값)과 맞춰 둔다 —
+# 운영은 관리자가 저장한 값을 쓰지만, 새 서버·테스트 DB 에서 다른 혜택이 보이지 않게.
 PLAN_DEFAULT_PERKS = {
     Plan.free: [],
-    Plan.basic: ["search_upper", "events", "stats_views"],
+    Plan.basic: ["events", "briefing"],
     Plan.premium: ["search_upper", "search_pin", "card_highlight", "events",
-                   "briefing", "article_priority", "stats_views", "stats_daily"],
+                   "briefing", "banner"],
     Plan.platinum: [k for k, _ in PERK_CATALOG],  # 전체
 }
 
@@ -727,15 +820,15 @@ PLAN_META = {
     },
     Plan.basic: {
         "label": "베이직",
-        "perks": ["일반 학교보다 상단 노출", "참가 행사 일정 등록", "조회수 통계"],
+        "perks": ["참가 행사 일정 등록", "학교 설명회 일정 등록"],
     },
     Plan.premium: {
         "label": "프리미엄",
-        "perks": ["베이직 혜택 전체", "검색 결과 상위 고정", "대표 이미지 노출", "일자별 상세 통계"],
+        "perks": ["베이직 혜택 전체", "일반 학교보다 상단 노출", "검색 결과 상위 고정", "추천 학교 배너 노출"],
     },
     Plan.platinum: {
         "label": "플래티넘",
-        "perks": ["프리미엄 혜택 전체", "검색 결과 최상단 고정", "추천 학교 배너 노출", "즐겨찾기 전환 분석"],
+        "perks": ["프리미엄 혜택 전체", "검색 결과 최상단 고정", "메인 소식 우선 노출", "취업/진학 정보 분석·공개 페이지"],
     },
 }
 
@@ -1172,6 +1265,9 @@ def user_out(user: User) -> dict:
         "school_id": user.school_id,
         "school_name": s.name if s else None,
         "phone": user.phone or "",
+        # 학교 계정 신청을 승인하면 임시 비밀번호로 계정이 나간다. 화면이
+        # 첫 로그인에서 바꾸라고 알리려면 이 값이 필요하다.
+        "must_change_password": bool(user.must_change_password),
         # 학교 계정이 상단에서 남은 기간을 보게 한다. 여기 실어 보내면
         # 화면이 그것 하나 때문에 요청을 더 보내지 않아도 된다.
         #
@@ -1183,6 +1279,8 @@ def user_out(user: User) -> dict:
             "plan_expires_at": s.plan_expires_at if s else None,
             "plan_days_left": plan_days_left(s),
             "plan_paused": bool(getattr(s, "plan_paused", False)) if s else False,
+            # 중학교/고등학교. 화면이 메뉴·첫 화면을 나눈다(서버도 권한으로 막는다).
+            "school_level": (s.school_level or "high") if s else "high",
         } if user.role == Role.school else {}),
     }
 
@@ -2408,6 +2506,10 @@ def school_detail(
     school = db.get(School, school_id)
     if not school:
         raise HTTPException(status_code=404, detail="학교를 찾을 수 없습니다.")
+    # 중학교 학교는 직업계고 상세 페이지 대상이 아니다. 관리자·그 학교 계정만 본다.
+    if (school.school_level or "high") == "middle" and not (
+            user and (user.role == Role.admin or user.school_id == school.id)):
+        raise HTTPException(status_code=404, detail="학교를 찾을 수 없습니다.")
 
     # 조회수는 여기서 세지 않는다. GET 은 새로고침·즐겨찾기 등으로
     # 여러 번 불리므로 그대로 세면 부풀려진다.
@@ -2427,6 +2529,7 @@ def school_detail(
             "student_count": school.student_count,
             "established_year": school.established_year,
             "view_count": school.view_count or 0,
+            "school_level": school.school_level or "high",
             "events": [
                 _event_out(e)
                 for e in sorted(school.events, key=lambda e: e.start_date)
@@ -2438,6 +2541,8 @@ def school_detail(
     if user and user.role == Role.admin:
         base["plan_expires_at"] = school.plan_expires_at
         base["plan_days_left"] = plan_days_left(school)
+    # 진학정보 링크는 이 사람이 실제로 열 수 있을 때만 띄운다.
+    base["has_admission_info"] = _admission.has_viewable_info(db, school, user)
     return base
 
 
@@ -4974,6 +5079,9 @@ def admin_toggle_school_visibility(
     school = db.get(School, school_id)
     if not school:
         raise HTTPException(status_code=404, detail="학교를 찾을 수 없습니다.")
+    if visible and (school.school_level or "high") == "middle":
+        raise HTTPException(status_code=422,
+                            detail="중학교는 직업계고 공개 목록에 노출할 수 없습니다.")
     school.is_visible = visible
     db.commit()
     return {"id": school_id, "is_visible": visible}
@@ -5311,7 +5419,8 @@ def admin_toggle_category_visibility(
     """계열별로 학교 노출을 한 번에 켜고 끈다."""
     updated = (
         db.query(School)
-        .filter(School.category == category)
+        # 중학교는 계열과 상관없이 늘 숨긴다(직업계고 공개 목록 대상이 아니다).
+        .filter(School.category == category, School.school_level != "middle")
         .update({School.is_visible: visible}, synchronize_session=False)
     )
     db.commit()
@@ -5515,6 +5624,7 @@ def confirm_subscription_payment(
     order.payment_key = payload.payment_key[:200]
     order.pay_method = (data.get("method") or "")[:30]
     order.receipt_url = ((data.get("receipt") or {}).get("url") or "")[:300]
+    order.is_test = toss.is_test_mode()
     order.paid_at = now
     order.handled_at = now
 
@@ -5760,488 +5870,16 @@ def run_spellcheck(payload: schemas.SpellCheckIn):
             "rule_count": spellcheck.rule_count()}
 
 
-# ==================== 선생님 계정 (학교가 발급) ====================
-# 선생님 계정 검색·권한부여·해제는 기록해 화면으로 옮겼다(2026-09 이동).
-# 계정 원본은 여기(UDJ)뿐이라 실제 처리는 여전히 여기서 하지만, 기록해
-# 서버가 partner.py 의 /api/partner/schools/{id}/teachers* 를 통해
-# 대신 호출한다 — 아래 5개 엔드포인트와 정확히 같은 로직이 partner.py 에 있다.
-
-
-# ==================== 선생님 워크스페이스 ====================
-def teacher_school(db: Session, user: User) -> School:
-    s = db.get(School, user.school_id) if user.school_id else None
-    if not s:
-        raise HTTPException(status_code=400, detail="소속 학교가 연결되지 않은 계정입니다.")
-    return s
-
-
-@app.get("/api/teacher/me")
-def teacher_me(db: Session = Depends(get_db), user: User = Depends(require_teacher)):
-    s = teacher_school(db, user)
-    return {
-        "name": user.name,
-        "email": user.email,
-        "class_name": user.class_name or "",
-        "school_id": s.id,
-        "school_name": s.name,
-        "must_change_password": bool(user.must_change_password),
-    }
-
-
-@app.post("/api/teacher/change-password")
-def teacher_change_password(
-    payload: schemas.ChangePasswordIn,
-    db: Session = Depends(get_db),
-    user: User = Depends(require_teacher),
-):
-    if not verify_password(payload.current_password, user.password_hash):
-        raise HTTPException(status_code=400, detail="현재 비밀번호가 일치하지 않습니다.")
-    if len(payload.new_password) < 8:
-        raise HTTPException(status_code=400, detail="새 비밀번호는 8자 이상이어야 합니다.")
-    user.password_hash = hash_password(payload.new_password)
-    user.must_change_password = False
-    db.commit()
-    return {"ok": True}
-
-
-@app.get("/api/teacher/students/search")
-def teacher_search_students(
-    q: str = Query(..., min_length=2),
-    db: Session = Depends(get_db),
-    user: User = Depends(require_teacher),
-):
-    """아이디(이메일)·이름·연락처로 학생 계정을 찾는다."""
-    s = teacher_school(db, user)
-    term = q.strip()
-    rows = (
-        db.query(User)
-        .filter(
-            User.role == Role.student,
-            User.is_active.is_(True),
-            # 다른 학교에 이미 소속된 학생은 검색 대상에서 뺀다 — 우리 학교와
-            # 무관한 학생의 이름·연락처가 다른 학교 선생님에게 새면 안 된다.
-            User.school_id.in_([None, s.id]),
-            or_(
-                User.email.ilike(f"%{term}%"),
-                User.name.ilike(f"%{term}%"),
-                User.phone.ilike(f"%{term}%"),
-            ),
-        )
-        .limit(20)
-        .all()
-    )
-    # 이미 우리 학교에 등록된 학생인지 표시
-    reg = {
-        v.user_id: v
-        for v in db.query(SchoolVerification)
-        .filter(SchoolVerification.school_id == s.id)
-        .all()
-    }
-    out = []
-    for u in rows:
-        v = reg.get(u.id)
-        out.append(
-            {
-                "id": u.id,
-                "email": u.email,
-                "name": u.name,
-                "phone": u.phone or "",
-                "registered": bool(v and v.status == "approved"),
-                "class_name": v.class_name if v else "",
-            }
-        )
-    return out
-
-
-@app.get("/api/teacher/students")
-def teacher_my_students(
-    scope: str = Query("mine", pattern="^(mine|all)$"),
-    db: Session = Depends(get_db),
-    user: User = Depends(require_teacher),
-):
-    """인증된 학생 목록. scope=mine이면 내 학급, all이면 우리 학교 전체."""
-    s = teacher_school(db, user)
-    q = db.query(SchoolVerification).filter(
-        SchoolVerification.school_id == s.id,
-        SchoolVerification.status == "approved",
-    )
-    if scope == "mine":
-        q = q.filter(SchoolVerification.teacher_id == user.id)
-    rows = q.all()
-    return [
-        {
-            "verification_id": v.id,
-            "user_id": v.user_id,
-            "name": v.user.name if v.user else "",
-            "email": v.user.email if v.user else "",
-            "phone": (v.user.phone or "") if v.user else "",
-            "class_name": v.class_name or "",
-            "teacher_name": v.teacher.name if v.teacher else "",
-            "is_mine": v.teacher_id == user.id,
-            "registered_at": v.decided_at or v.created_at,
-        }
-        for v in rows
-    ]
-
-
-# ── 학급 이관 ──────────────────────────────────────────────
-#
-# 학년이 올라가면 학생이 다른 반으로 옮겨가고 담당 선생님도 바뀐다.
-# 선생님이 자기 반 목록에서 학생을 골라 새 학급으로 넘기면, 그 학급을
-# 맡은 선생님 계정으로 담당이 함께 옮겨간다.
-#
-# 담당 선생님은 따로 고르지 않는다. 선생님 계정에 적힌 담당 학급
-# (예: "2학년 3반")으로 찾는다. 사람이 짝을 맞추다 틀리는 일을 줄이려는
-# 것이고, 학급과 담당이 어긋나는 상태 자체를 만들지 않기 위해서다.
-
-
-def _class_options(db: Session, school_id: int) -> List[dict]:
-    """옮겨갈 수 있는 학급 목록.
-
-    선생님 계정에 적힌 담당 학급을 모은다. 담당이 없는 반으로는 보낼 수
-    없는데, 그러면 그 학생의 일지를 아무도 못 보게 되기 때문이다.
-    """
-    rows = (db.query(User)
-            .filter(User.school_id == school_id, User.role == Role.teacher,
-                    User.is_active.is_(True))
-            .order_by(User.class_name, User.name).all())
-    out, seen = [], set()
-    for t in rows:
-        name = (t.class_name or "").strip()
-        if not name or name in seen:
-            continue
-        seen.add(name)
-        out.append({"class_name": name, "teacher_id": t.id, "teacher_name": t.name})
-    return out
-
-
-@app.get("/api/teacher/class-options")
-def teacher_class_options(db: Session = Depends(get_db),
-                          user: User = Depends(require_class_manager)):
-    """학급 드롭다운에 넣을 목록."""
-    s = teacher_school(db, user)
-    opts = _class_options(db, s.id)
-    return {
-        "options": opts,
-        # 담당 학급이 비어 있는 선생님이 있으면 드롭다운에 안 나온다.
-        # 왜 안 보이는지 화면이 설명할 수 있게 함께 알려준다.
-        "teachers_without_class": [
-            {"id": t.id, "name": t.name}
-            for t in db.query(User).filter(
-                User.school_id == s.id, User.role == Role.teacher,
-                User.is_active.is_(True),
-                or_(User.class_name.is_(None), User.class_name == "")).all()
-        ],
-    }
-
-
-@app.post("/api/teacher/students/move")
-def teacher_move_students(payload: dict, request: Request,
-                          db: Session = Depends(get_db),
-                          user: User = Depends(require_class_manager)):
-    """고른 학생들을 다른 학급으로 옮긴다.
-
-    한 명만 골라도 되고 여럿을 한 번에 골라도 된다. 옮기면 담당 선생님도
-    그 학급을 맡은 계정으로 함께 바뀐다.
-
-    선생님 계정은 자기가 맡은 학생만 옮길 수 있다. 학교 계정은 전교생을
-    옮길 수 있는데, 학년 전체가 한꺼번에 바뀌는 진급 때 필요하다.
-    """
-    s = teacher_school(db, user)
-    ids = payload.get("user_ids") or []
-    target = str(payload.get("class_name") or "").strip()
-
-    if not isinstance(ids, list) or not ids:
-        raise HTTPException(status_code=400, detail="옮길 학생을 골라주세요.")
-    if not target:
-        raise HTTPException(status_code=400, detail="옮겨갈 학급을 골라주세요.")
-
-    opt = next((o for o in _class_options(db, s.id) if o["class_name"] == target), None)
-    if opt is None:
-        raise HTTPException(
-            status_code=400,
-            detail="담당 선생님이 지정된 학급이 아닙니다. 먼저 그 반의 선생님 계정에 담당 학급을 적어주세요.",
-        )
-
-    try:
-        ids = [int(i) for i in ids]
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="형식이 올바르지 않습니다.")
-
-    q = db.query(SchoolVerification).filter(
-        SchoolVerification.school_id == s.id,
-        SchoolVerification.status == "approved",
-        SchoolVerification.user_id.in_(ids),
-    )
-    # 선생님은 자기 학생만. 학교 계정은 전체.
-    if user.role == Role.teacher:
-        q = q.filter(SchoolVerification.teacher_id == user.id)
-    rows = q.all()
-
-    moved, names = 0, []
-    for v in rows:
-        if v.class_name == target and v.teacher_id == opt["teacher_id"]:
-            continue  # 이미 그 반이면 건드리지 않는다
-        v.class_name = target
-        v.teacher_id = opt["teacher_id"]
-        moved += 1
-        if v.user:
-            names.append(v.user.name)
-    db.commit()
-
-    missed = len(ids) - len(rows)
-    write_audit(db, request, user, action="teacher.students_move",
-                target_type="school", target_id=s.id,
-                detail=f"{moved}명 → {target} ({opt['teacher_name']})")
-    return {
-        "ok": True, "moved": moved, "skipped": missed,
-        "class_name": target, "teacher_name": opt["teacher_name"],
-        "message": (
-            f"{moved}명을 {target}({opt['teacher_name']} 선생님)으로 옮겼습니다."
-            if moved else "옮길 학생이 없습니다. 이미 그 학급인지 확인해주세요."
-        ) + (f" {missed}명은 담당이 아니라 건너뛰었습니다." if missed else ""),
-    }
-
-
-# ---- 재학생 인증 신청 처리 (선생님) ----
-@app.get("/api/teacher/verifications")
-def teacher_verifications(
-    db: Session = Depends(get_db), user: User = Depends(require_teacher)
-):
-    """학생이 직접 낸 재학생 인증 신청 목록(대기/처리 내역)."""
-    s = teacher_school(db, user)
-    rows = (
-        db.query(SchoolVerification)
-        .filter(SchoolVerification.school_id == s.id)
-        .order_by(SchoolVerification.created_at.desc())
-        .all()
-    )
-    return [
-        {
-            "id": v.id,
-            "status": v.status,
-            "note": v.note or "",
-            "class_name": v.class_name or "",
-            "user_id": v.user_id,
-            "user_name": v.user.name if v.user else "",
-            "user_email": v.user.email if v.user else "",
-            "created_at": v.created_at,
-        }
-        for v in rows
-    ]
-
-
-@app.post("/api/teacher/verifications/{verification_id}/approve")
-def teacher_approve_verification(
-    verification_id: int,
-    payload: schemas.VerifyApprove,
-    db: Session = Depends(get_db),
-    user: User = Depends(require_teacher),
-):
-    """신청 승인. 승인하면 그 학생이 우리 학교 재학생(내 학급 명단)으로 잡힌다."""
-    s = teacher_school(db, user)
-    v = db.get(SchoolVerification, verification_id)
-    if not v or v.school_id != s.id:
-        raise HTTPException(status_code=404, detail="인증 신청을 찾을 수 없습니다.")
-    v.status = "approved"
-    v.class_name = (payload.class_name or user.class_name or "").strip()[:40]
-    v.teacher_id = user.id
-    v.decided_at = datetime.utcnow()
-    db.commit()
-    return {"ok": True}
-
-
-@app.post("/api/teacher/verifications/{verification_id}/reject")
-def teacher_reject_verification(
-    verification_id: int,
-    db: Session = Depends(get_db),
-    user: User = Depends(require_teacher),
-):
-    s = teacher_school(db, user)
-    v = db.get(SchoolVerification, verification_id)
-    if not v or v.school_id != s.id:
-        raise HTTPException(status_code=404, detail="인증 신청을 찾을 수 없습니다.")
-    v.status = "rejected"
-    v.teacher_id = user.id
-    v.decided_at = datetime.utcnow()
-    db.commit()
-    return {"ok": True}
-
-
-@app.post("/api/teacher/students")
-def teacher_register_student(
-    payload: schemas.TeacherRegisterStudent,
-    db: Session = Depends(get_db),
-    user: User = Depends(require_teacher),
-):
-    """학생을 우리 학교·내 학급 인원으로 등록한다."""
-    s = teacher_school(db, user)
-    student = db.get(User, payload.user_id)
-    if not student or student.role != Role.student:
-        raise HTTPException(status_code=404, detail="학생 계정을 찾을 수 없습니다.")
-    class_name = (payload.class_name or user.class_name or "").strip()[:40]
-
-    v = (
-        db.query(SchoolVerification)
-        .filter(
-            SchoolVerification.user_id == student.id,
-            SchoolVerification.school_id == s.id,
-        )
-        .first()
-    )
-    if v:
-        v.status = "approved"
-        v.class_name = class_name
-        v.teacher_id = user.id
-        v.decided_at = datetime.utcnow()
-    else:
-        db.add(
-            SchoolVerification(
-                user_id=student.id,
-                school_id=s.id,
-                status="approved",
-                class_name=class_name,
-                teacher_id=user.id,
-                decided_at=datetime.utcnow(),
-            )
-        )
-    db.commit()
-    return {"ok": True}
-
-
-@app.delete("/api/teacher/students/{user_id}")
-def teacher_unregister_student(
-    user_id: int, db: Session = Depends(get_db), user: User = Depends(require_teacher)
-):
-    """재학생 인증 해제. 해제하면 그 학생은 내 학급 명단에서 빠진다."""
-    s = teacher_school(db, user)
-    v = (
-        db.query(SchoolVerification)
-        .filter(
-            SchoolVerification.user_id == user_id,
-            SchoolVerification.school_id == s.id,
-        )
-        .first()
-    )
-    if not v:
-        raise HTTPException(status_code=404, detail="등록 정보를 찾을 수 없습니다.")
-    db.delete(v)
-    db.commit()
-    return {"ok": True}
+# ==================== 선생님 기능 (UDJ에서 없앰) ====================
+# 2026-10: UDJ에서는 선생님 권한을 쓰지 않기로 해서 /api/teacher/* 와 /teacher 화면을 지웠다.
+# 선생님 계정 자체(Role.teacher)는 기록해가 쓰므로 남아 있고, 선생님 권한 부여·해제는
+# 기록해 서버가 partner.py 의 /api/partner/schools/{id}/teachers* 로 처리한다.
 
 
 # ============================================================
 # 공지 · 알림
 # ============================================================
-def _notice_out(n: Notice, read: bool = False) -> dict:
-    return {
-        "id": n.id,
-        "scope": n.scope,
-        "school_id": n.school_id,
-        "school_name": n.school.name if n.school else "",
-        "title": n.title,
-        "body": n.body or "",
-        "image_url": n.image_url or "",
-        "is_popup": bool(n.is_popup),
-        "is_important": bool(n.is_important),
-        "author_name": n.author.name if n.author else "",
-        "starts_at": n.starts_at,
-        "ends_at": n.ends_at,
-        "created_at": n.created_at,
-        "is_read": read,
-    }
-
-
-def _visible_notices(db: Session, user: Optional[User]):
-    """이 사용자에게 보여야 할 공지를 기간 조건까지 반영해 고른다."""
-    now = datetime.utcnow()
-    q = db.query(Notice).filter(
-        or_(Notice.starts_at.is_(None), Notice.starts_at <= now),
-        or_(Notice.ends_at.is_(None), Notice.ends_at >= now),
-    )
-
-    conds = [Notice.scope == "all"]   # 전체 공지는 누구에게나
-    if user is not None:
-        if user.role == Role.school and user.school_id:
-            # 학교 계정: 우리 학교 대상 공지
-            conds.append(
-                and_(Notice.scope == "school", Notice.school_id == user.school_id)
-            )
-        if user.role == Role.teacher and user.school_id:
-            # 선생님: 학교 대상 공지 + 학교가 선생님들에게 보낸 공지
-            conds.append(
-                and_(
-                    Notice.scope.in_(["school", "teachers"]),
-                    Notice.school_id == user.school_id,
-                )
-            )
-    return q.filter(or_(*conds)).order_by(Notice.created_at.desc())
-
-
-@app.get("/api/notices")
-def list_my_notices(
-    db: Session = Depends(get_db),
-    user: Optional[User] = Depends(get_current_user_optional),
-):
-    """내게 보이는 공지 목록과 안 읽은 개수."""
-    rows = _visible_notices(db, user).limit(50).all()
-    read_ids = set()
-    if user is not None and rows:
-        read_ids = {
-            r.notice_id
-            for r in db.query(NoticeRead)
-            .filter(
-                NoticeRead.user_id == user.id,
-                NoticeRead.notice_id.in_([n.id for n in rows]),
-            )
-            .all()
-        }
-    items = [_notice_out(n, n.id in read_ids) for n in rows]
-    return {
-        "items": items,
-        "unread": sum(1 for i in items if not i["is_read"]),
-        # 팝업 대상 공지 전체. 실제로 띄울지는 브라우저가
-        # '오늘은 그만 보기' 기록을 보고 판단한다(읽음 여부와 무관).
-        "popups": [i for i in items if i["is_popup"]],
-    }
-
-
-@app.post("/api/notices/{notice_id}/read")
-def mark_notice_read(
-    notice_id: int,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    if not db.get(Notice, notice_id):
-        raise HTTPException(status_code=404, detail="공지를 찾을 수 없습니다.")
-    exists = (
-        db.query(NoticeRead)
-        .filter(NoticeRead.notice_id == notice_id, NoticeRead.user_id == user.id)
-        .first()
-    )
-    if not exists:
-        db.add(NoticeRead(notice_id=notice_id, user_id=user.id))
-        db.commit()
-    return {"ok": True}
-
-
-def _create_notice(db, user, payload, scope: str, school_id=None) -> dict:
-    n = Notice(
-        author_id=user.id,
-        scope=scope,
-        school_id=school_id,
-        title=payload.title.strip()[:150],
-        body=(payload.body or "").strip(),
-        image_url=(payload.image_url or "").strip()[:300],
-        is_popup=bool(payload.is_popup) and scope == "all",
-        is_important=bool(payload.is_important),
-        starts_at=payload.starts_at,
-        ends_at=payload.ends_at,
-    )
-    db.add(n)
-    db.commit()
-    db.refresh(n)
-    return _notice_out(n)
+# 공지 목록·읽음·관리자 공지는 notices.py 로 옮겼다(2026-10 공지사항 개편).
 
 
 ALLOWED_IMAGE_TYPES = {
@@ -6284,43 +5922,6 @@ def school_upload_hero_image(
     기본 기능)라 플랜과 무관하게 항상 업로드·노출된다."""
     s = my_school(db, user)
     return {"url": _save_uploaded_image(file, prefix=f"hero_{s.id}")}
-
-
-# ---------- 관리자: 전체 공지 / 특정 학교 공지 ----------
-@app.get("/api/admin/notices")
-def admin_list_notices(db: Session = Depends(get_db), user: User = Depends(require_admin)):
-    rows = db.query(Notice).order_by(Notice.created_at.desc()).limit(200).all()
-    return [_notice_out(n) for n in rows]
-
-
-@app.post("/api/admin/notices")
-def admin_create_notice(
-    payload: schemas.NoticeIn,
-    db: Session = Depends(get_db),
-    user: User = Depends(require_admin),
-):
-    """scope=all 이면 전체 공지, scope=school 이면 특정 학교 공지."""
-    if payload.scope not in ("all", "school"):
-        raise HTTPException(status_code=400, detail="scope는 all 또는 school 이어야 합니다.")
-    school_id = None
-    if payload.scope == "school":
-        if not payload.school_id or not db.get(School, payload.school_id):
-            raise HTTPException(status_code=400, detail="대상 학교를 선택해주세요.")
-        school_id = payload.school_id
-    return _create_notice(db, user, payload, payload.scope, school_id)
-
-
-@app.delete("/api/admin/notices/{notice_id}")
-def admin_delete_notice(
-    notice_id: int, db: Session = Depends(get_db), user: User = Depends(require_admin)
-):
-    n = db.get(Notice, notice_id)
-    if not n:
-        raise HTTPException(status_code=404, detail="공지를 찾을 수 없습니다.")
-    db.query(NoticeRead).filter(NoticeRead.notice_id == notice_id).delete()
-    db.delete(n)
-    db.commit()
-    return {"ok": True}
 
 
 @app.get("/api/health")
@@ -6369,6 +5970,24 @@ def sitemap_xml(request: Request, db: Session = Depends(get_db)):
         parts.append(
             f"<url><loc>{base}/schools/{sid}</loc><lastmod>{lastmod}</lastmod>"
             f"<changefreq>weekly</changefreq><priority>0.8</priority></url>"
+        )
+
+    # 진학정보는 '전체 공개'로 둔 플래티넘 학교만 싣는다. 로그인·학생 한정이나
+    # 비공개 학교의 주소는 검색엔진에 알려 주지 않는다.
+    from .models import AdmissionSetting
+    public_ids = [
+        r[0] for r in db.query(AdmissionSetting.school_id)
+        .join(School, School.id == AdmissionSetting.school_id)
+        .filter(AdmissionSetting.visibility == "PUBLIC", School.is_visible.is_(True))
+        .all()
+    ]
+    for sid in public_ids:
+        s = db.get(School, sid)
+        if s is None or not _admission.is_indexable(db, s):
+            continue
+        parts.append(
+            f"<url><loc>{base}/schools/{sid}/admission</loc><lastmod>{today}</lastmod>"
+            f"<changefreq>monthly</changefreq><priority>0.7</priority></url>"
         )
 
     parts.append("</urlset>")

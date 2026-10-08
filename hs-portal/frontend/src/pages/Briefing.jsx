@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useSeo } from "../seo";
 import LecturerProfile from "../components/LecturerProfile";
@@ -19,6 +19,11 @@ import ReviewForm from "../components/ReviewForm";
  * 부터는 아무 말이나 적고 넘긴다.
  *
  * 다 보고 나면 후기 창이 뜬다.
+ *
+ * **회원만 본다.** 챕터 제목과 강사 소개는 누구나 보고(무엇을 듣게 되는지
+ * 알아야 가입한다), 재생 주소는 서버가 로그인한 사람에게만 준다
+ * (login_required). 비회원이 [시청하기]나 챕터를 누르면 가입 창으로 보내고,
+ * 가입·로그인이 끝나면 이 자리로 돌아온다.
  */
 
 const SEEN_KEY = "briefing_survey_done";
@@ -63,6 +68,10 @@ export default function Briefing() {
   const videoRef = useRef(null);
   const pending = useRef(null);   // 설문을 내고 나면 틀 것
   const jumped = useRef(false);   // 주소로 넘어온 자동 재생은 한 번만
+  const navigate = useNavigate();
+  const location = useLocation();
+  const here = location.pathname + location.search;
+  const toLogin = () => navigate(`/login?next=${encodeURIComponent(here)}`);
 
   useEffect(() => {
     api.briefing().then(setData).catch((e) => setError(e.message));
@@ -89,6 +98,31 @@ export default function Briefing() {
     ? { file_url: video.file_url, start: 0 }
     : chapters.find((c) => c.source)?.source) || null;
   const playable = !!firstSource || chapters.some((c) => c.source);
+  const needLogin = !!data?.login_required;
+
+  // 재생 중 오른쪽에 띄울 챕터 목록. 챕터 안에 강의가 있으면 강의 단위로 편다.
+  const playlist = useMemo(() => buildPlaylist(chapters), [chapters]);
+  const [activeKey, setActiveKey] = useState(null);
+
+  // 챕터마다 영상을 따로 올린 경우: 한 파트가 끝나면 다음 파트를 이어서 튼다.
+  // 마지막 파트까지 끝나야 후기 창을 띄운다.
+  const onEnded = () => {
+    const i = playlist.findIndex((e) => e.key === activeKey);
+    const nextEntry = i >= 0 ? playlist[i + 1] : null;
+    if (nextEntry && videoPath(nextEntry.source.file_url) !== videoPath(now?.file_url)) {
+      setActiveKey(nextEntry.key);
+      start(nextEntry.source);
+      return;
+    }
+    if (!reviewDone) setReviewing(true);
+  };
+
+  const onTime = () => {
+    const el = videoRef.current;
+    if (!el || !now) return;
+    const k = entryAt(playlist, now.file_url, el.currentTime);
+    if (k !== activeKey) setActiveKey(k);
+  };
 
   /** 재생 시작. 설문을 안 냈으면 먼저 받는다.
    *
@@ -100,6 +134,14 @@ export default function Briefing() {
     if (!allowed) {
       pending.current = source;
       setAsking(true);
+      return;
+    }
+    // 같은 영상 안의 다른 챕터면 파일을 다시 받지 않고 그 초로만 옮긴다.
+    // (주소의 티켓은 부를 때마다 달라서, 티켓을 뺀 경로로 같은 영상인지 본다.)
+    const el0 = videoRef.current;
+    if (el0 && now && videoPath(now.file_url) === videoPath(source.file_url)) {
+      el0.currentTime = source.start || 0;
+      el0.play().catch(() => {});
       return;
     }
     setNow(source);
@@ -152,9 +194,17 @@ export default function Briefing() {
           : "linear-gradient(135deg, #2b2f3a 0%, #14161c 55%, #3a2320 100%)",
       }}>
         {now?.file_url ? (
-          <video ref={videoRef} key={now.file_url} src={now.file_url} controls autoPlay
-            onEnded={() => { if (!reviewDone) setReviewing(true); }}
-            style={{ width: "100%", maxHeight: "70vh", display: "block", background: "#000" }} />
+          <div className={playlist.length > 1 ? "bf-player" : undefined}>
+            <video ref={videoRef} key={now.file_url} src={now.file_url} controls autoPlay
+              controlsList="nodownload" onContextMenu={(e) => e.preventDefault()}
+              onEnded={onEnded}
+              onTimeUpdate={onTime} onSeeked={onTime}
+              style={{ width: "100%", maxHeight: "70vh", display: "block", background: "#000" }} />
+            {playlist.length > 1 && (
+              <BriefingChapters playlist={playlist} activeKey={activeKey}
+                onPick={(e) => { setActiveKey(e.key); start(e.source); }} />
+            )}
+          </div>
         ) : (
           <>
             {data.cover ? (
@@ -189,11 +239,13 @@ export default function Briefing() {
                   || "직업계고가 무엇인지, 우리 아이에게 맞는지, 어떻게 준비하는지 차근차근 짚어 드립니다."}
               </p>
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                {playable ? (
-                  <button className="btn btn-signal" onClick={() => start(firstSource)}
-                    style={{ fontSize: 15, padding: "11px 22px" }}>
-                    ▶ 시청하기
-                  </button>
+                {needLogin ? (
+                  <MembersOnlyCta here={here} />
+                ) : playable ? (
+                  /* 대표 화면은 설명만 한다. 재생은 아래 커리큘럼의 챕터를 눌러 시작한다. */
+                  <span className="hero-play-hint">
+                    아래 커리큘럼에서 보고 싶은 챕터를 누르면 재생됩니다.
+                  </span>
                 ) : (
                   <span style={{ fontSize: 13.5, opacity: .85 }}>
                     강의 영상이 아직 준비되지 않았습니다.
@@ -226,7 +278,7 @@ export default function Briefing() {
         display: "grid", gap: 20, marginTop: 26,
         gridTemplateColumns: "minmax(0, 1fr) 320px",
       }}>
-        <Curriculum chapters={chapters} onPlay={start} />
+        <Curriculum chapters={chapters} onPlay={start} onLocked={needLogin ? toLogin : null} />
         {/* 바깥 칸은 줄 높이만큼 늘어나고(그래야 붙어 다닐 여백이 생긴다),
           * 안쪽이 실제로 따라다닌다. 바깥에 바로 sticky 를 걸면 칸 높이가
           * 카드 높이와 같아져서 붙을 자리가 없다. */}
@@ -264,6 +316,81 @@ export default function Briefing() {
   );
 }
 
+/** 티켓(?t=)을 뺀 영상 경로. 같은 영상인지 가릴 때 쓴다. */
+function videoPath(url) {
+  return String(url || "").split("?")[0];
+}
+
+/** 챕터(와 그 안의 강의)를 재생 목록 한 줄로 편다. 재생할 수 없는 것은 뺀다.
+ *  길이는 같은 영상 안 다음 항목의 시작까지(마지막이면 영상 끝까지)로 센다. */
+function buildPlaylist(chapters) {
+  const flat = [];
+  chapters.forEach((ch, i) => {
+    const items = ch.items || [];
+    if (items.length) {
+      items.forEach((it, j) => {
+        if (it.source) flat.push({ key: `${i}-${j}`, title: it.title, group: ch.title, source: it.source });
+      });
+    } else if (ch.source) {
+      flat.push({ key: `${i}`, title: ch.title, group: "", source: ch.source });
+    }
+  });
+  return flat.map((e) => {
+    const p = videoPath(e.source.file_url);
+    const later = flat.filter((x) => videoPath(x.source.file_url) === p && x.source.start > e.source.start)
+      .map((x) => x.source.start);
+    const end = later.length ? Math.min(...later) : e.source.duration_sec;
+    return { ...e, length: end ? end - (e.source.start || 0) : null };
+  });
+}
+
+/** 지금 재생 위치가 들어 있는 항목: 같은 영상 중 시작이 지금보다 앞선 것 가운데 가장 늦은 것. */
+function entryAt(playlist, url, t) {
+  const p = videoPath(url);
+  let best = null;
+  for (const e of playlist) {
+    if (videoPath(e.source.file_url) !== p) continue;
+    if ((e.source.start || 0) <= t + 0.5 && (!best || e.source.start >= best.source.start)) best = e;
+  }
+  return best ? best.key : null;
+}
+
+/** 재생 화면 오른쪽 챕터 목록. 누르면 그 초부터 이어서 재생한다. */
+function BriefingChapters({ playlist, activeKey, onPick }) {
+  return (
+    <aside className="bf-chapters" aria-label="챕터">
+      <div className="bf-chapters-head">목차 <span>{playlist.length}</span></div>
+      <ol>
+        {playlist.map((e, i) => {
+          const on = e.key === activeKey;
+          return (
+            <li key={e.key}>
+              <button type="button" className={`bf-chapter${on ? " on" : ""}`}
+                aria-current={on ? "true" : undefined} onClick={() => onPick(e)}>
+                <span className="bf-chapter-mark" aria-hidden="true">{on ? "▶" : String(i + 1).padStart(2, "0")}</span>
+                <span className="bf-chapter-body">
+                  {e.group && <span className="bf-chapter-group">{e.group}</span>}
+                  <span className="bf-chapter-title">{e.title}</span>
+                  <span className="bf-chapter-time">
+                    {fmtTime(e.source.start || 0)}
+                    {e.length ? ` · ${fmtLength(e.length)}` : ""}
+                  </span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </aside>
+  );
+}
+
+function fmtLength(sec) {
+  const m = Math.round((Number(sec) || 0) / 60);
+  if (m <= 0) return "1분 미만";
+  return m >= 60 ? `${Math.floor(m / 60)}시간 ${m % 60 ? `${m % 60}분` : ""}`.trim() : `${m}분`;
+}
+
 /** 강의 정보 한 줄씩 — 클래스101처럼 아이콘 + 사실만.
  *
  * 없는 값은 아예 안 보여 준다. "난이도: -" 같은 빈칸은 화면만 채우고
@@ -276,7 +403,7 @@ function MetaLine({ summary, video }) {
       + (summary.lessons ? ` · 강의 ${summary.lessons}개` : "")]);
   }
   if (summary?.duration_sec) rows.push(["🕘", fmtLong(summary.duration_sec)]);
-  if (video && !video.file_url) rows.push(["🔒", "영상이 아직 공개되지 않았습니다"]);
+  if (video?.locked) rows.push(["🔒", "영상이 아직 공개되지 않았습니다"]);
   if (!rows.length) return null;
 
   return (
@@ -287,6 +414,29 @@ function MetaLine({ summary, video }) {
           <span style={{ opacity: .75 }}>{icon}</span>{text}
         </div>
       ))}
+    </div>
+  );
+}
+
+/** 비회원에게 [시청하기] 자리에 보여 주는 것. 가입·로그인 뒤 이 자리로 돌아온다. */
+function MembersOnlyCta({ here }) {
+  const next = encodeURIComponent(here);
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      <span style={{ fontSize: 13, opacity: .9 }}>
+        🔒 설명회 영상은 회원만 볼 수 있어요. 가입은 무료예요.
+      </span>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <Link className="btn btn-signal" to={`/signup?next=${next}`}
+          style={{ fontSize: 15, padding: "11px 22px" }}>
+          무료 회원가입하고 시청하기
+        </Link>
+        <Link className="btn" to={`/login?next=${next}`}
+          style={{ fontSize: 15, padding: "11px 18px", background: "rgba(255,255,255,.14)",
+            color: "#fff", borderColor: "rgba(255,255,255,.35)" }}>
+          로그인
+        </Link>
+      </div>
     </div>
   );
 }

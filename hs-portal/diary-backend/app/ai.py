@@ -145,14 +145,50 @@ def pick_quotes(text: str, limit: int = 2) -> List[str]:
 
 # ---------------------------------------------------------------- 양식 정의
 # 일지 종류별 입력 항목. (키, 라벨, 자소서에서의 역할)
+# 수업일지는 "오늘 무엇을 배웠나"보다 "어디서 막혔고 어떻게 풀었나"를 남긴다.
+# 그래야 나중에 자기소개서의 문제 해결 경험으로 바로 쓸 수 있다.
+#
+# 라벨은 자소서 재료·AI·선생님 화면에서 칸 하나만 떼어 보여도 무엇인지
+# 알 수 있게 소제목까지 붙여 둔다. 작성 화면에서는 소제목 아래에
+# 짧은 안내(LESSON_UI)를 대신 보여 준다.
 LESSON_FIELDS = [
+    ("content", "수업 내용"),
+    # 예전 양식의 칸을 다시 살렸다(2026-09-28). 같은 키라 예전에 써 둔 글이 그대로 이어진다.
+    ("feeling", "수업을 통해 느낀 점"),
+    ("problem", "해결하지 못한 내용 — 어려웠던 부분과 해결 방법·계획"),
+    ("result", "해결하지 못한 내용 — 문제해결 과정 및 결과"),
+    ("unsolved_lesson", "해결하지 못한 내용 — 느낀 점·교훈"),
+    ("solved_problem", "해결한 내용 — 이해되지 않거나 어려웠던 내용"),
+    ("solved_process", "해결한 내용 — 문제를 해결한 과정"),
+    ("solved_lesson", "해결한 내용 — 느낀 점·교훈"),
+]
+
+# 작성 화면에서 칸을 묶는 소제목과 안내.
+LESSON_SECTIONS = [
+    {"key": "unsolved", "title": "수업시간에 해결하지 못한 내용", "hint": ""},
+    {"key": "solved", "title": "수업시간에 해결 했던 내용",
+     "hint": "이해가 되지 않거나 어려웠던 내용을 해결 작성하고 문제를 해결한 과정을 기록해 주세요."},
+]
+LESSON_UI = {
+    "content": {"section": "", "label": "수업내용"},
+    "feeling": {"section": "", "label": "수업을 통해 느낀 점"},
+    "problem": {"section": "unsolved",
+                "label": "1) 이해가 되지 않거나 어려웠던 부분을 작성하고, "
+                         "문제를 해결하기 위한 방법과 계획을 기록해주세요."},
+    "result": {"section": "unsolved",
+               "label": "2) 문제해결 과정 및 결과 (이해하지 못 했거나 어려웠던 문제를 해결했을 경우 작성해주세요)"},
+    "unsolved_lesson": {"section": "unsolved", "label": "3) 문제를 해결하면서 느낀점 또는 교훈"},
+    "solved_problem": {"section": "solved", "label": "1) 이해되지 않거나 어려웠던 내용"},
+    "solved_process": {"section": "solved", "label": "2) 문제를 해결한 과정"},
+    "solved_lesson": {"section": "solved", "label": "3) 문제를 해결하면서 느낀점 또는 교훈"},
+}
+
+# 예전 수업일지 양식에만 있던 칸. 새로 쓰는 화면에는 없지만, 이미 써 둔
+# 글은 읽기·자소서 재료·AI·선생님 화면에서 그대로 쓰인다(field_labels).
+LESSON_LEGACY_FIELDS = [
     ("objective", "학습 목적"),
     ("goal", "학습 목표"),
-    ("content", "수업 내용"),
-    ("feeling", "수업을 통해 느낀 점"),
-    ("problem", "해결하지 못하거나 이해하지 못해 어려웠던 부분"),
     ("solution", "해결하기 위한 방법"),
-    ("result", "결과 및 느낀 점"),
 ]
 
 DIARY_FIELDS = [
@@ -164,7 +200,7 @@ DIARY_FIELDS = [
 
 FIELDS = {"lesson": LESSON_FIELDS, "diary": DIARY_FIELDS}
 
-KIND_LABEL = {"lesson": "수업 일지", "diary": "학교생활 일지"}
+KIND_LABEL = {"lesson": "수업일지", "diary": "학교생활일지"}
 
 # 자소서 항목. 화면·내려받기·AI 재료찾기가 모두 이 순서를 따른다.
 RESUME_TEMPLATES = {
@@ -331,7 +367,131 @@ def match_resume_topics(entries, limit_per_topic: int = 3):
 
 
 def field_labels(kind: str) -> List[tuple]:
+    """읽을 때 쓰는 칸 전부. 예전 양식의 칸도 뒤에 붙인다 — 이미 써 둔 글이
+    양식이 바뀌었다는 이유로 재료·AI·선생님 화면에서 사라지면 안 된다."""
+    if kind == "lesson":
+        return LESSON_FIELDS + LESSON_LEGACY_FIELDS
     return FIELDS.get(kind, DIARY_FIELDS)
+
+
+def input_fields(kind: str) -> List[dict]:
+    """작성 화면에 보여 줄 칸. 수업일지는 소제목(section)과 안내 라벨을 함께 준다."""
+    out = []
+    for key, label in FIELDS.get(kind, DIARY_FIELDS):
+        ui = LESSON_UI.get(key, {}) if kind == "lesson" else {}
+        out.append({"key": key, "label": ui.get("label", label),
+                    "full_label": label, "section": ui.get("section", "")})
+    return out
+
+
+def legacy_fields(kind: str) -> List[dict]:
+    if kind != "lesson":
+        return []
+    return [{"key": k, "label": v} for k, v in LESSON_LEGACY_FIELDS]
+
+
+# ---------------------------------------------------------------- 자소서 카테고리 · 직업군
+# 일지에 달아 두는 "자기소개서 항목 카테고리". 자소서 항목(RESUME_TEMPLATES)
+# 중 경험을 묻는 11개가 그대로 카테고리다 — 표를 따로 두면 두 곳의 이름이
+# 어긋난다. 지원동기·입사 후 목표는 지난 일을 적는 일지와 맞지 않아
+# 카테고리로 고르지 않고, 자소서 화면에서 AI 가 질문을 만들어 준다.
+RESUME_CATEGORY_KEYS = [k for k in RESUME_TEMPLATES if k not in LOOSE_TOPICS]
+
+
+def clean_categories(keys) -> List[str]:
+    """아는 카테고리만, 정해진 순서대로, 겹치지 않게."""
+    wanted = {str(k) for k in (keys or [])}
+    return [k for k in RESUME_CATEGORY_KEYS if k in wanted]
+
+
+# 희망 직업군. 채용 사이트의 직무 분류를 따른다. 단서 낱말은 일지에서
+# "이 직업군과 이어지는 경험"을 찾는 데 쓴다(부분 일치라 어간만 적는다).
+JOB_CATEGORIES = [
+    ("planning", "기획·전략", ["기획", "전략", "계획", "분석", "아이디어", "제안", "사업"]),
+    ("marketing", "마케팅·홍보·조사", ["마케팅", "홍보", "광고", "조사", "설문", "SNS", "브랜드", "캠페인"]),
+    ("accounting", "회계·세무·재무", ["회계", "세무", "재무", "장부", "전산회계", "예산", "정산", "엑셀"]),
+    ("hr", "인사·노무·HRD", ["인사", "노무", "채용", "면접", "교육", "상담", "리더"]),
+    ("office", "총무·법무·사무", ["사무", "총무", "문서", "서류", "법", "행정", "엑셀", "컴퓨터활용"]),
+    ("it", "IT·개발·데이터", ["프로그래", "코딩", "개발", "앱", "웹", "데이터", "파이썬", "자바", "C언어",
+                             "서버", "네트워크", "보안", "알고리즘", "정보처리", "컴퓨터"]),
+    ("design", "디자인", ["디자인", "포토샵", "일러스트", "그림", "드로잉", "색", "편집", "UI"]),
+    ("sales", "영업·판매·무역", ["영업", "판매", "무역", "고객", "매장", "상품", "수출"]),
+    ("cs", "고객상담·TM", ["상담", "고객", "전화", "응대", "친절", "안내", "민원"]),
+    ("logistics", "구매·자재·물류", ["물류", "구매", "자재", "재고", "창고", "배송", "유통"]),
+    ("md", "상품기획·MD", ["상품", "기획", "트렌드", "MD", "판매", "브랜드"]),
+    ("transport", "운전·운송·배송", ["운전", "운송", "배송", "차량", "지게차", "면허"]),
+    ("service", "서비스", ["서비스", "고객", "접객", "조리", "요리", "제과", "제빵", "미용", "호텔", "관광"]),
+    ("production", "생산", ["생산", "공정", "가공", "선반", "밀링", "용접", "조립", "기계", "설비",
+                            "품질", "CNC", "제조"]),
+    ("construction", "건설·건축", ["건설", "건축", "토목", "설계", "도면", "캐드", "CAD", "측량", "인테리어"]),
+    ("medical", "의료", ["의료", "간호", "보건", "병원", "환자", "응급"]),
+    ("rnd", "연구·R&D", ["연구", "실험", "탐구", "분석", "측정", "논문", "과학"]),
+    ("education", "교육", ["교육", "가르", "설명", "멘토", "튜터"]),
+    ("media", "미디어·문화·스포츠", ["영상", "촬영", "방송", "미디어", "음악", "공연", "스포츠", "체육", "유튜브"]),
+    ("finance", "금융·보험", ["금융", "은행", "보험", "투자", "경제", "증권"]),
+    ("public", "공공·복지", ["공공", "공무원", "복지", "봉사", "지역", "사회"]),
+]
+JOB_LABEL = {k: label for k, label, _ in JOB_CATEGORIES}
+JOB_KEYWORDS = {k: words for k, _, words in JOB_CATEGORIES}
+
+
+def rank_topic_records(journals, topic: str, tagged_ids=(), job: str = "",
+                       limit: int = 6) -> List[dict]:
+    """자소서 항목 하나에 쓸 만한 일지를 순서대로 고른다.
+
+    journals: [{id, kind, entry_date, title, passages:[{field_key, field_label, text}]}]
+
+    순서:
+      1) 학생이 그 일지에 이 카테고리를 직접 달아 둔 것 — 본인이 제일 잘 안다
+      2) 희망 직업군의 단서 낱말이 나오는 것
+      3) 항목 단서 낱말이 많이 나오는 것
+    직접 단 것이 아니면 예전처럼 단서가 충분할 때만 올린다(억지로 채우지 않는다).
+    점수가 같으면 최근 기록이 위로 온다.
+    """
+    tagged = set(tagged_ids or ())
+    topic_kw = RESUME_KEYWORDS.get(topic, [])
+    job_kw = JOB_KEYWORDS.get(job, [])
+    scored = []
+    for j in journals:
+        passages = [p for p in (j.get("passages") or []) if (p.get("text") or "").strip()]
+        if not passages:
+            continue
+        full = "\n".join(p["text"] for p in passages)
+        is_tagged = j["id"] in tagged
+        if not is_tagged and len(full.strip()) < 20:
+            continue
+        # 가장 잘 맞는 칸 하나를 대표로 보여 준다.
+        best, best_score = passages[0], -1
+        for p in passages:
+            sc, _ = score_text(p["text"], topic_kw)
+            if sc > best_score or (sc == best_score and len(p["text"]) > len(best["text"])):
+                best, best_score = p, sc
+        topic_score, topic_hits = score_text(full, topic_kw)
+        job_score, job_hits = score_text(full, job_kw) if job_kw else (0, [])
+        if not is_tagged and not (topic_score >= MATCH_MIN_SCORE
+                                  or (topic_score >= 1 and job_score >= 1)):
+            continue
+        rank = (100 if is_tagged else 0) + min(job_score, 3) * 3 + topic_score
+        scored.append((rank, str(j.get("entry_date") or ""), j, best,
+                       topic_hits, job_hits, is_tagged))
+
+    scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    out = []
+    for _rank, _date, j, best, topic_hits, job_hits, is_tagged in scored[:limit]:
+        out.append({
+            "journal_id": j["id"],
+            "entry_date": j.get("entry_date") or "",
+            "kind": j.get("kind"),
+            "kind_label": KIND_LABEL.get(j.get("kind"), j.get("kind", "")),
+            "title": j.get("title") or "",
+            "field_label": best.get("field_label", ""),
+            "summary": summarize(best["text"], max_sentences=2),
+            "original": best["text"],
+            "keywords": (topic_hits + [w for w in job_hits if w not in topic_hits])[:6],
+            "tagged": is_tagged,
+            "job_keywords": job_hits[:4],
+        })
+    return out
 
 
 # ---------------------------------------------------------------- 변환기
@@ -568,7 +728,8 @@ def build_resume(kind: str, content: Dict[str, str], template: str = "school_lif
 
     # 본문 구성: 항목 성격에 맞게 [상황 → 행동 → 결과/배움] 흐름으로 배치
     if kind == "lesson":
-        order = ["content", "problem", "solution", "result", "feeling"]
+        order = ["content", "problem", "solution", "result", "unsolved_lesson",
+                 "solved_problem", "solved_process", "solved_lesson", "feeling"]  # 느낀 점은 마무리에
     else:
         order = ["memorable", "reason", "lesson", "apply"]
 

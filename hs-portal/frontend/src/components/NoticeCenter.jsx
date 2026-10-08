@@ -110,6 +110,9 @@ export default function NoticeCenter() {
                 <span className="label" style={{ color: "var(--steel-light)" }}>
                   안 읽음 {data.unread}
                 </span>
+                <a href="/notices" className="label" style={{ color: "var(--signal-deep)", marginLeft: "auto" }}>
+                  공지사항 전체 보기 →
+                </a>
               </div>
               {items.length === 0 ? (
                 <p style={{ fontSize: 13.5, color: "var(--steel)", padding: "14px" }}>
