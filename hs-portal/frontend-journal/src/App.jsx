@@ -83,7 +83,6 @@ function Guard({ children, role }) {
 export default function App() {
   const { user, logout } = useAuth();
   const location = useLocation();
-  const onLanding = !user && location.pathname === "/";
   const isStudent = user && user.role === "student";
   const isTeacher = canViewStudentRecords(user);
 
@@ -154,12 +153,16 @@ export default function App() {
                 관리
               </NavLink>
             )}
-            {/* 로그인 전 첫 화면에서는 소개 구역으로 가는 길을 둔다 */}
-            {onLanding && (
+            {/* 로그인 전에는 어느 화면에서든 같은 메뉴를 보인다(로그인·회원가입·공지사항
+                화면에서도). 소개 구역은 첫 화면(/)의 해당 위치로 간다. */}
+            {!user && (
               <>
-                <a href="#how" className="nav-anchor">이용 방법</a>
-                <a href="#diaries" className="nav-anchor">두 가지 일지</a>
-                <a href="#resume" className="nav-anchor">자기소개서</a>
+                <NavLink to="/" end className={({ isActive }) => (isActive && !location.hash ? "on" : "")}>
+                  홈
+                </NavLink>
+                <Link to="/#how" className="nav-anchor">이용 방법</Link>
+                <Link to="/#diaries" className="nav-anchor">두 가지 일지</Link>
+                <Link to="/#resume" className="nav-anchor">자기소개서</Link>
               </>
             )}
             <NavLink to="/notices" className={({ isActive }) => (isActive ? "on" : "")}>

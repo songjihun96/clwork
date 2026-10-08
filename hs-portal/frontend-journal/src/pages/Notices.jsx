@@ -17,7 +17,11 @@ function NoticeList() {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
 
-  useEffect(() => { document.title = "공지사항 | 기록해"; }, []);
+  useEffect(() => {
+    const before = document.title;
+    document.title = "공지사항 | 기록해";
+    return () => { document.title = before; };
+  }, []);
   useEffect(() => {
     setError("");
     api.notices({ category: category || undefined }).then(setData)
@@ -71,9 +75,12 @@ function NoticeDetail({ id }) {
   const [n, setN] = useState(null);
   const [error, setError] = useState("");
   useEffect(() => {
+    const before = document.title;
+    let alive = true;   // 다른 화면으로 넘어간 뒤 응답이 오면 제목을 바꾸지 않는다
     setN(null); setError("");
-    api.notice(id).then((d) => { setN(d); document.title = `${d.title} | 기록해`; })
-      .catch((e) => setError(e.message));
+    api.notice(id).then((d) => { if (!alive) return; setN(d); document.title = `${d.title} | 기록해`; })
+      .catch((e) => alive && setError(e.message));
+    return () => { alive = false; document.title = before; };
   }, [id]);
   return (
     <div className="wrap page" style={{ maxWidth: 820 }}>

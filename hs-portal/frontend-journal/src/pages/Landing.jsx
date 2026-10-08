@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { api } from "../api";
 
 /** 기록해 첫 화면(로그인 전). 디자인 기준: "기록해 첫 화면.pdf".
@@ -89,6 +89,13 @@ export default function Landing() {
     document.title = "기록해 | 학교생활과 수업을 기록하고 자기소개서로 연결";
     return () => { document.title = before; };
   }, []);
+  // 상단 메뉴의 '이용 방법' 등은 /#how 처럼 들어온다. 그 구역으로 내려 준다.
+  const { hash } = useLocation();
+  useEffect(() => {
+    const el = hash && document.getElementById(hash.slice(1));
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    else if (!hash) window.scrollTo(0, 0);
+  }, [hash]);
   return (
     <div className="lp" ref={ref}>
       <HeroSection />
