@@ -1544,6 +1544,8 @@ function StatsTab({ stats }) {
         </div>
       </div>
 
+      <MiddleSchoolPanel ms={stats.middle_school_stats} />
+
       <div className="panel">
         <h3>조회수 상위 학교</h3>
         <table className="table">
@@ -1560,6 +1562,57 @@ function StatsTab({ stats }) {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+/** 가입 중학교 — 지역별(영업용). 중학교 학교 계정이 붙은 학교를 시·도별로 센다.
+ *  같은 표가 현황 리포트(CSV)의 [11]에도 들어간다. */
+function MiddleSchoolPanel({ ms }) {
+  if (!ms || !ms.by_region) return null;
+  const data = ms.by_region.map((r) => ({ name: r.region, 가입: r.joined }));
+  const active = ms.by_region.filter((r) => r.joined || r.pending);
+  return (
+    <div className="panel">
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+        <h3 style={{ margin: 0 }}>가입 중학교 — 지역별</h3>
+        <span style={{ fontSize: 13, color: "var(--steel)" }}>
+          전체 <b>{ms.total.toLocaleString()}</b>개교 · 최근 30일 신규 <b>{ms.recent30.toLocaleString()}</b>
+          {" "}· 신청 대기 <b>{ms.pending.toLocaleString()}</b>
+        </span>
+      </div>
+      <p style={{ fontSize: 13, color: "var(--steel)", marginTop: 6 }}>
+        활성 학교 계정이 있는 중학교 수입니다. 신청 대기는 접수·통화 완료 상태의 중학교 신청입니다.
+      </p>
+      <div style={{ height: 240 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{ top: 5, right: 5, bottom: 5, left: -22 }}>
+            <CartesianGrid strokeDasharray="2 4" stroke="#dbe1e6" vertical={false} />
+            <XAxis dataKey="name" tick={{ fontSize: 10.5, fill: "#8a99a6" }} tickLine={false} axisLine={{ stroke: "#dbe1e6" }} interval={0} />
+            <YAxis tick={{ fontSize: 11, fill: "#8a99a6" }} tickLine={false} axisLine={false} allowDecimals={false} />
+            <Tooltip contentStyle={{ border: "1px solid #dbe1e6", borderRadius: 4, fontSize: 13 }} cursor={{ fill: "rgba(255,197,61,0.12)" }} />
+            <Bar dataKey="가입" fill="#3a7bd5" radius={[2, 2, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      {active.length === 0 ? (
+        <p className="label" style={{ color: "var(--steel-light)" }}>아직 가입한 중학교가 없습니다.</p>
+      ) : (
+        <table className="table">
+          <thead><tr><th>지역</th><th style={{ textAlign: "right" }}>가입 중학교</th>
+            <th style={{ textAlign: "right" }}>최근 30일 신규</th><th style={{ textAlign: "right" }}>신청 대기</th></tr></thead>
+          <tbody>
+            {active.map((r) => (
+              <tr key={r.region}>
+                <td style={{ fontWeight: 600 }}>{r.region}</td>
+                <td style={{ textAlign: "right", fontFamily: "var(--font-mono)" }}>{r.joined}</td>
+                <td style={{ textAlign: "right", fontFamily: "var(--font-mono)" }}>{r.recent30}</td>
+                <td style={{ textAlign: "right", fontFamily: "var(--font-mono)" }}>{r.pending}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

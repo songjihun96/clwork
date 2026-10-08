@@ -4051,14 +4051,14 @@ def admin_audit_logs(
 @app.get("/api/admin/stats", response_model=schemas.AdminStatsOut)
 def admin_stats(db: Session = Depends(get_db), user: User = Depends(require_admin)):
     expire_plans(db)
-    school_count = db.query(School).count()
+    school_count = db.query(School).filter(HIGH_SCHOOL).count()
     students = db.query(User).filter(User.role == Role.student).count()
     school_accounts = db.query(User).filter(User.role == Role.school).count()
     pending = db.query(PlanOrder).filter(PlanOrder.status == OrderStatus.pending).count()
 
     plan_dist = {}
     for p in [Plan.free, Plan.basic, Plan.premium, Plan.platinum]:
-        n = db.query(School).filter(School.plan == p).count()
+        n = db.query(School).filter(School.plan == p, HIGH_SCHOOL).count()
         plan_dist[PLAN_META[p]["label"]] = n
 
     # 예전에는 "플랜별 학교 수 × 정가"를 매출로 보여 줬다. 무료로 올려 준 학교,
@@ -4069,6 +4069,7 @@ def admin_stats(db: Session = Depends(get_db), user: User = Depends(require_admi
     region_dist = {
         r: c
         for r, c in db.query(School.region, func.count(School.id))
+        .filter(HIGH_SCHOOL)
         .group_by(School.region)
         .order_by(func.count(School.id).desc())
         .all()
@@ -4096,6 +4097,7 @@ def admin_stats(db: Session = Depends(get_db), user: User = Depends(require_admi
         "region_distribution": region_dist,
         "top_viewed": top_viewed,
         "quiz_stats": _quiz_stats(db),
+        "middle_school_stats": _middle_school_stats(db),
     }
 
 
@@ -4166,6 +4168,57 @@ def _paid_revenue(db: Session) -> dict:
     }
 
 
+# 직업계고(고등학교)만. 2026-10 부터 중학교 학교 계정이 숨김 학교(school_level=middle)로
+# 같은 표에 들어오므로, 직업계고 숫자(학교 수·지역별·플랜·계정 개설률)에서는 뺀다.
+HIGH_SCHOOL = func.coalesce(School.school_level, "high") != "middle"
+
+
+def _middle_school_stats(db: Session) -> dict:
+    """우리동네직업계고에 가입한 중학교 — 지역별 학교 수(영업용).
+
+    · 가입    : 활성 학교 계정이 하나라도 붙은 중학교(승인 때 숨김 학교로 만들어진다)
+    · 최근 30일: 그중 첫 학교 계정이 30일 안에 만들어진 학교
+    · 신청 대기: 아직 처리 중(접수·통화 완료)인 중학교 계정 신청
+    지역은 17개 시·도를 모두 보이고(0 포함), 목록 밖 값은 맨 뒤에 붙인다.
+    """
+    from .models import SchoolAccountRequest
+    from .school_requests import OPEN_STATUSES, REGIONS
+
+    first_account = dict(
+        db.query(School.id, func.min(User.created_at))
+        .join(User, User.school_id == School.id)
+        .filter(School.school_level == "middle", User.role == Role.school,
+                User.is_active.is_(True))
+        .group_by(School.id).all()
+    )
+    region_of = dict(db.query(School.id, School.region)
+                     .filter(School.id.in_(list(first_account) or [0])).all())
+    since = datetime.utcnow() - timedelta(days=30)
+    joined: dict = {}
+    recent: dict = {}
+    for sid, first in first_account.items():
+        r = region_of.get(sid) or "기타"
+        joined[r] = joined.get(r, 0) + 1
+        if first and first >= since:
+            recent[r] = recent.get(r, 0) + 1
+    pending = {
+        (r or "기타"): n for r, n in
+        db.query(SchoolAccountRequest.region, func.count(SchoolAccountRequest.id))
+        .filter(SchoolAccountRequest.school_level == "middle",
+                SchoolAccountRequest.status.in_(OPEN_STATUSES))
+        .group_by(SchoolAccountRequest.region).all()
+    }
+    regions = list(REGIONS) + sorted((set(joined) | set(pending)) - set(REGIONS))
+    by_region = [{"region": r, "joined": joined.get(r, 0), "recent30": recent.get(r, 0),
+                  "pending": pending.get(r, 0)} for r in regions]
+    return {
+        "total": sum(joined.values()),
+        "recent30": sum(recent.values()),
+        "pending": sum(pending.values()),
+        "by_region": by_region,
+    }
+
+
 def _quiz_stats(db: Session) -> dict:
     """진로 적성 테스트 참여자 수 (오늘/이번 달/올해/전체)."""
     now = datetime.utcnow()
@@ -4210,18 +4263,18 @@ def admin_stats_export(db: Session = Depends(get_db), user: User = Depends(requi
     now = datetime.utcnow()
 
     # ---- 기본 집계 ----
-    total_schools = db.query(func.count(School.id)).scalar() or 0
-    visible_schools = db.query(func.count(School.id)).filter(School.is_visible.is_(True)).scalar() or 0
+    total_schools = db.query(func.count(School.id)).filter(HIGH_SCHOOL).scalar() or 0
+    visible_schools = db.query(func.count(School.id)).filter(School.is_visible.is_(True), HIGH_SCHOOL).scalar() or 0
     students = db.query(func.count(User.id)).filter(User.role == Role.student).scalar() or 0
     teachers = db.query(func.count(User.id)).filter(User.role == Role.teacher).scalar() or 0
 
-    # 학교 계정이 개설된 학교
+    # 학교 계정이 개설된 학교(직업계고만. 중학교는 [11]에서 따로 센다)
     account_school_ids = {
-        r[0] for r in db.query(User.school_id)
-        .filter(User.role == Role.school, User.school_id.isnot(None)).distinct().all()
+        r[0] for r in db.query(User.school_id).join(School, School.id == User.school_id)
+        .filter(User.role == Role.school, HIGH_SCHOOL).distinct().all()
     }
     with_account = len(account_school_ids)
-    paid = db.query(func.count(School.id)).filter(School.plan != Plan.free).scalar() or 0
+    paid = db.query(func.count(School.id)).filter(School.plan != Plan.free, HIGH_SCHOOL).scalar() or 0
 
     # 학교별 관심도 지표 (한 번에 집계해 N+1 회피)
     fav_map = dict(db.query(Favorite.school_id, func.count(Favorite.id)).group_by(Favorite.school_id).all())
@@ -4316,14 +4369,14 @@ def admin_stats_export(db: Session = Depends(get_db), user: User = Depends(requi
     w.writerow(["[5. 지역별 현황]"])
     w.writerow(["지역", "학교 수", "계정 개설", "유료 플랜", "계정 개설률"])
     region_rows = (
-        db.query(School.region, func.count(School.id))
+        db.query(School.region, func.count(School.id)).filter(HIGH_SCHOOL)
         .group_by(School.region).order_by(func.count(School.id).desc()).all()
     )
     for region, cnt in region_rows:
-        ids = {r[0] for r in db.query(School.id).filter(School.region == region).all()}
+        ids = {r[0] for r in db.query(School.id).filter(School.region == region, HIGH_SCHOOL).all()}
         acc = len(ids & account_school_ids)
         pay = db.query(func.count(School.id)).filter(
-            School.region == region, School.plan != Plan.free
+            School.region == region, School.plan != Plan.free, HIGH_SCHOOL
         ).scalar() or 0
         w.writerow([region, cnt, acc, pay, pct(acc, cnt)])
     w.writerow([])
@@ -4335,7 +4388,7 @@ def admin_stats_export(db: Session = Depends(get_db), user: User = Depends(requi
                 "검색 노출(30일)", "클릭률", "진로테스트 추천(30일)",
                 "즐겨찾기", "문의", "연락처"])
     top = (
-        db.query(School)
+        db.query(School).filter(HIGH_SCHOOL)
         .order_by(func.coalesce(School.view_count, 0).desc())
         .limit(300).all()
     )
@@ -4462,13 +4515,24 @@ def admin_stats_export(db: Session = Depends(get_db), user: User = Depends(requi
     w.writerow(["[10. 플랜·매출]"])
     w.writerow(["플랜", "학교 수", "월 가격(원)"])
     for p in (Plan.free, Plan.basic, Plan.premium, Plan.platinum):
-        cnt = db.query(func.count(School.id)).filter(School.plan == p).scalar() or 0
+        cnt = db.query(func.count(School.id)).filter(School.plan == p, HIGH_SCHOOL).scalar() or 0
         w.writerow([PLAN_META[p]["label"], cnt, get_plan_price(db, p)])
     revenue = sum(
         get_plan_price(db, p) * (db.query(func.count(School.id)).filter(School.plan == p).scalar() or 0)
         for p in (Plan.basic, Plan.premium, Plan.platinum)
     )
     w.writerow(["월 예상 매출", revenue, ""])
+    w.writerow([])
+
+    # ---------- 11. 중학교 가입 현황 (지역별) ----------
+    # 중학교 진로 담당 선생님 쪽 영업용. 어느 지역 중학교가 얼마나 들어와 있는지.
+    ms = _middle_school_stats(db)
+    w.writerow(["[11. 중학교 가입 현황 — 지역별]"])
+    w.writerow(["지역", "가입 중학교 수", "최근 30일 신규", "신청 대기", "비중"])
+    for row in ms["by_region"]:
+        w.writerow([row["region"], row["joined"], row["recent30"], row["pending"],
+                    pct(row["joined"], ms["total"])])
+    w.writerow(["합계", ms["total"], ms["recent30"], ms["pending"], "100.0%" if ms["total"] else "0.0%"])
 
     csv_text = "\ufeff" + buf.getvalue()   # 엑셀 한글 깨짐 방지(BOM)
     return Response(

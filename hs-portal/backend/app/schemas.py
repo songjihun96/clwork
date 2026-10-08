@@ -601,6 +601,7 @@ class AdminStatsOut(BaseModel):
     region_distribution: dict
     top_viewed: List[dict]
     quiz_stats: dict = {}
+    middle_school_stats: dict = {}   # 가입 중학교 — 지역별(영업용)
 
 
 # ---------- 진로 적성 테스트 ----------
