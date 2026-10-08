@@ -29,13 +29,21 @@ const SharedPortfolio = lazy(() => import("./pages/SharedPortfolio"));
 const Landing = lazy(() => import("./pages/Landing"));
 const Notices = lazy(() => import("./pages/Notices"));
 
-// 첫 화면: 로그인 전에는 서비스 소개(랜딩), 학생은 내 홈, 그 밖의 역할은 그 역할의 첫 화면.
+// 첫 화면: 로그인 전에는 서비스 소개(랜딩), 학생은 내 홈, 학교 계정은 학교 홈,
+// 그 밖의 역할은 그 역할의 첫 화면.
 function HomeGate() {
   const { user, loading } = useAuth();
   if (loading) return <div className="wrap page"><p>불러오는 중…</p></div>;
   if (!user) return <Landing />;
+  if (user.role === "school") return <SchoolHome />;
   if (user.role !== "student") return <Navigate to={homeFor(user)} replace />;
   return <Home />;
+}
+
+function SchoolPath() {
+  const { user } = useAuth();
+  if (user?.role === "school") return <Navigate to="/" replace />;
+  return <SchoolHome />;
 }
 
 // 역할별로 쓸 수 있는 화면이 다르다. 서버의 권한 규칙과 정확히 맞춘다.
@@ -50,8 +58,8 @@ export function homeFor(user) {
   if (!user) return "/login";
   if (user.role === "student") return "/";
   if (user.role === "admin") return "/admin";
-  // 학교 계정은 학생 기록 대신 우리 학교 현황을 먼저 본다.
-  if (user.role === "school") return "/school";
+  // 학교 계정도 기록해 홈(/)이 첫 화면이다. 홈에는 우리 학교 현황이 나온다.
+  if (user.role === "school") return "/";
   if (canViewStudentRecords(user)) return "/students";
   return "/unsupported";
 }
@@ -108,8 +116,8 @@ export default function App() {
               </>
             )}
             {user?.role === "school" && (
-              <NavLink to="/school" end className={({ isActive }) => (isActive ? "on" : "")}>
-                우리 학교
+              <NavLink to="/" end className={({ isActive }) => (isActive ? "on" : "")}>
+                홈
               </NavLink>
             )}
             {(user?.role === "school" || user?.role === "teacher") && (
@@ -202,8 +210,10 @@ export default function App() {
                 예전에 개인 결제한 계정의 환불은 '내 정보'에서 처리한다.
                 옛 주소로 들어오면 그쪽으로 보낸다. */}
             <Route path="/orders" element={<Navigate to="/subscribe" replace />} />
+            {/* 학교 계정의 홈은 / 다. 예전 주소(/school)로 들어오면 홈으로 보낸다.
+                관리자는 이 주소로 학교 홈 화면을 그대로 본다. */}
             <Route path="/school"
-              element={<Guard role={["school", "admin"]}><SchoolHome /></Guard>} />
+              element={<Guard role={["school", "admin"]}><SchoolPath /></Guard>} />
             {/* 이용권은 학교가 산다. 학교 계정만 들어갈 수 있다. */}
             <Route path="/school/seats"
               element={<Guard role={["school", "teacher", "admin"]}><SchoolSeats /></Guard>} />
